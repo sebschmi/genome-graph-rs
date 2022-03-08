@@ -64,9 +64,9 @@ dependencies = [
 
 [[package]]
 name = "bigraph"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da35c5245664b5c0d5e0729ca752cbfe0a66aebebfb3821257c657b62963e19f"
+checksum = "d3442960572fd33c61eb32f69c39678beac61e18b2ba0bd5cb8cce7ef30a2a66"
 dependencies = [
  "bitvector",
  "num-traits",
@@ -209,9 +209,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "compact-genome"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77ffcdd1c6e0a547bf141b45f72e0bcb4131f9997424bcbdb4dbd69111992712"
+checksum = "92bac81acaee6a58d2c50f622201444277ac5d5d7dfe058ed7c8d47a105dc58c"
 dependencies = [
  "bitvec",
  "itertools",
@@ -963,9 +963,9 @@ dependencies = [
 
 [[package]]
 name = "traitgraph"
-version = "0.7.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27f62d79568b92a08597725d326d351f5c0830c6b166b139511bc689bc3b768d"
+checksum = "cf62128e830b5280aede16dfedd4ccca7d59bef5fc5e8e3fbd42c5134c821762"
 dependencies = [
  "bitvector",
  "num-traits",
@@ -975,9 +975,9 @@ dependencies = [
 
 [[package]]
 name = "traitgraph-algo"
-version = "0.7.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70feb99e6b99b5dac4fa0ca03e0c228f7a3f7ac2f82ec9925e686eb45ff93aa7"
+checksum = "8e21b81bbd14c99a1793a7a32c44fc1cfef4408a8ff1218b4ae95b3f2b640ca3"
 dependencies = [
  "rand",
  "traitgraph",
@@ -985,9 +985,9 @@ dependencies = [
 
 [[package]]
 name = "traitsequence"
-version = "0.6.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fc72819501e9c4430514249c67906b22235a0eb2ab30bf4ffebfdd69f32df3f"
+checksum = "21695cbcb01adde5f4b5e39be180ac583878a108314ed8877fe158d58ed770a1"
 
 [[package]]
 name = "triple_accel"
