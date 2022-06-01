@@ -122,6 +122,22 @@ pub struct PlainBCalm2Edge {
     to_side: bool,
 }
 
+impl<GenomeSequenceStoreHandle: Default> Default
+    for PlainBCalm2NodeData<GenomeSequenceStoreHandle>
+{
+    fn default() -> Self {
+        Self {
+            id: -1_isize as usize,
+            sequence_handle: GenomeSequenceStoreHandle::default(),
+            forwards: true,
+            length: 0,
+            total_abundance: 0,
+            mean_abundance: 0.0,
+            edges: Vec::new(),
+        }
+    }
+}
+
 impl<GenomeSequenceStoreHandle: Clone> BidirectedData
     for PlainBCalm2NodeData<GenomeSequenceStoreHandle>
 {
