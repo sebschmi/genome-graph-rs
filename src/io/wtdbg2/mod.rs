@@ -57,6 +57,17 @@ pub struct Wtdbg2ReadLocation {
     pub bucket_len: usize,
 }
 
+impl Default for PlainWtdbg2NodeData {
+    fn default() -> Self {
+        Self {
+            index: (-1_isize) as usize,
+            forward: true,
+            closed: false,
+            read_associations: Vec::new(),
+        }
+    }
+}
+
 impl<'a> From<&'a str> for PlainWtdbg2NodeData {
     fn from(string: &'a str) -> Self {
         let mut split = string.split('\t');
@@ -184,7 +195,7 @@ impl Wtdbg2NodeData for PlainWtdbg2NodeData {
 }
 
 /// Edge data derived from a .1.reads file.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Default)]
 pub struct PlainWtdbg2EdgeData {
     /// The read associations of the edge. That are the locations on the reads that give evidence for this edge.
     pub read_associations: Vec<Wtdbg2EdgeReadAssociation>,
