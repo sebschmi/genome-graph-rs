@@ -121,6 +121,15 @@ pub struct BidirectedGfaEdgeData<Data> {
     pub data: Data,
 }
 
+impl<Data: BidirectedData> BidirectedData for BidirectedGfaEdgeData<Data> {
+    fn mirror(&self) -> Self {
+        Self {
+            overlap: self.overlap,
+            data: self.data.mirror(),
+        }
+    }
+}
+
 /// Properties of a GFA file that was read.
 pub struct GfaReadFileProperties {
     /// The order of the node-centric de Bruijn graph stored in the GFA file. If the GFA file does not contain the respective header field, then this field is usize::max_value().
