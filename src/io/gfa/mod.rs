@@ -19,20 +19,18 @@ use traitgraph_algo::dijkstra::DijkstraWeightedEdgeData;
 /// Type of graphs read from gfa files.
 pub type PetGfaGraph<NodeData, EdgeData, SequenceHandle> =
     crate::bigraph::implementation::node_bigraph_wrapper::NodeBigraphWrapper<
-        crate::bigraph::traitgraph::implementation::petgraph_impl::petgraph::graph::DiGraph<
+        crate::bigraph::traitgraph::implementation::petgraph_impl::PetGraph<
             BidirectedGfaNodeData<SequenceHandle, NodeData>,
             BidirectedGfaEdgeData<EdgeData>,
-            usize,
         >,
     >;
 
 /// The edge-centric variant of the type of graphs read from gfa files.
 pub type PetGfaEdgeGraph<NodeData, EdgeData, SequenceHandle> =
     crate::bigraph::implementation::node_bigraph_wrapper::NodeBigraphWrapper<
-        crate::bigraph::traitgraph::implementation::petgraph_impl::petgraph::graph::DiGraph<
+        crate::bigraph::traitgraph::implementation::petgraph_impl::PetGraph<
             NodeData,
             BidirectedGfaNodeData<SequenceHandle, EdgeData>,
-            usize,
         >,
     >;
 

@@ -18,7 +18,7 @@ rust-version = "1.58.1"
 [dependencies]
 bigraph = "2.0.0"
 compact-genome = "1.0.0"
-traitgraph-algo = "1.0.0"
+traitgraph-algo = "2.0.0"
 num-traits = "0.2.14"
 bio = "0.39.1"
 error-chain = "0.12.4"
