@@ -12,7 +12,7 @@ use compact_genome::interface::sequence::{GenomeSequence, OwnedGenomeSequence};
 use compact_genome::interface::sequence_store::SequenceStore;
 use num_traits::NumCast;
 use std::collections::HashMap;
-use std::fmt::{Debug, Write};
+use std::fmt::{Debug, Formatter, Write};
 use std::hash::Hash;
 use std::path::Path;
 
@@ -631,7 +631,8 @@ where
 }
 
 /// Read a genome graph in bcalm2 fasta format into an edge-centric representation.
-pub fn read_bigraph_from_bcalm2_as_edge_centric<
+#[allow(dead_code)]
+fn read_bigraph_from_bcalm2_as_edge_centric_old<
     R: std::io::BufRead,
     AlphabetType: Alphabet + Hash + Eq + Clone + 'static,
     GenomeSequenceStore: SequenceStore<AlphabetType>,
@@ -675,6 +676,295 @@ where
     debug_assert!(bigraph.verify_node_pairing());
     debug_assert!(bigraph.verify_edge_mirror_property());
     Ok(bigraph)
+}
+
+enum MappedNode<Graph: GraphBase> {
+    Unmapped,
+    Normal {
+        forward: Graph::NodeIndex,
+        backward: Graph::NodeIndex,
+    },
+    SelfMirror(Graph::NodeIndex),
+}
+
+impl<Graph: GraphBase> MappedNode<Graph> {
+    fn mirror(self) -> Self {
+        match self {
+            MappedNode::Unmapped => MappedNode::Unmapped,
+            MappedNode::Normal { forward, backward } => MappedNode::Normal {
+                forward: backward,
+                backward: forward,
+            },
+            MappedNode::SelfMirror(node) => MappedNode::SelfMirror(node),
+        }
+    }
+}
+
+impl<Graph: GraphBase> std::fmt::Debug for MappedNode<Graph> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MappedNode::Unmapped => write!(f, "unmapped"),
+            MappedNode::Normal { forward, backward } => {
+                write!(f, "({}, {})", forward.as_usize(), backward.as_usize())
+            }
+            MappedNode::SelfMirror(node) => write!(f, "{}", node.as_usize()),
+        }
+    }
+}
+
+impl<Graph: GraphBase> Clone for MappedNode<Graph> {
+    fn clone(&self) -> Self {
+        match self {
+            MappedNode::Unmapped => MappedNode::Unmapped,
+            MappedNode::Normal { forward, backward } => MappedNode::Normal {
+                forward: *forward,
+                backward: *backward,
+            },
+            MappedNode::SelfMirror(node) => MappedNode::SelfMirror(*node),
+        }
+    }
+}
+
+impl<Graph: GraphBase> Copy for MappedNode<Graph> {}
+
+impl<Graph: GraphBase> PartialEq for MappedNode<Graph> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (MappedNode::Unmapped, MappedNode::Unmapped) => true,
+            (
+                MappedNode::Normal {
+                    forward: f1,
+                    backward: b1,
+                },
+                MappedNode::Normal {
+                    forward: f2,
+                    backward: b2,
+                },
+            ) => f1 == f2 && b1 == b2,
+            (MappedNode::SelfMirror(n1), MappedNode::SelfMirror(n2)) => n1 == n2,
+            _ => false,
+        }
+    }
+}
+
+impl<Graph: GraphBase> Eq for MappedNode<Graph> {}
+
+/// Read a genome graph in bcalm2 fasta format into an edge-centric representation.
+pub fn read_bigraph_from_bcalm2_as_edge_centric<
+    R: std::io::BufRead,
+    AlphabetType: Alphabet + Hash + Eq + Clone + 'static,
+    GenomeSequenceStore: SequenceStore<AlphabetType>,
+    NodeData: Default + Clone,
+    EdgeData: From<PlainBCalm2NodeData<GenomeSequenceStore::Handle>> + Clone + Eq + BidirectedData,
+    Graph: DynamicEdgeCentricBigraph<NodeData = NodeData, EdgeData = EdgeData> + Default,
+>(
+    reader: bio::io::fasta::Reader<R>,
+    target_sequence_store: &mut GenomeSequenceStore,
+    kmer_size: usize,
+) -> crate::error::Result<Graph>
+where
+    <Graph as GraphBase>::NodeIndex: Clone,
+    <GenomeSequenceStore as SequenceStore<AlphabetType>>::Handle: Clone,
+{
+    let mut node_map: Vec<MappedNode<Graph>> = Vec::new();
+    let mut graph = Graph::default();
+
+    for record in reader.records() {
+        let record: PlainBCalm2NodeData<GenomeSequenceStore::Handle> =
+            parse_bcalm2_fasta_record(record?, target_sequence_store)?;
+
+        let sequence = target_sequence_store.get(&record.sequence_handle);
+        let edge_is_self_mirror = sequence
+            .iter()
+            .zip(sequence.reverse_complement_iter())
+            .take(kmer_size - 1)
+            .all(|(a, b)| *a == b);
+
+        let n1 = record.id * 2;
+        let n2 = record.id * 2 + 1;
+
+        let n1_is_self_mirror = record.edges.contains(&PlainBCalm2Edge {
+            from_side: false,
+            to_node: record.id,
+            to_side: true,
+        });
+        let n2_is_self_mirror = record.edges.contains(&PlainBCalm2Edge {
+            from_side: true,
+            to_node: record.id,
+            to_side: false,
+        });
+
+        assert!(
+            !(edge_is_self_mirror && (n1_is_self_mirror || n2_is_self_mirror)),
+            "A de Bruijn graph cannot have both self-mirror nodes and edges"
+        );
+
+        if node_map.len() <= n2 {
+            node_map.resize(n2 + 1, MappedNode::Unmapped);
+        }
+
+        // If the record has no known incoming binode yet
+        if node_map[n1] == MappedNode::Unmapped {
+            let mut assign_to_neighbors = false;
+
+            // If the record has no known incoming binode yet, first search if one of the neighbors exist
+            for edge in record
+                .edges
+                .iter()
+                // Incoming edges to n1 are outgoing on its reverse complement
+                .filter(|edge| !edge.from_side)
+            {
+                // Location of the to_node of the edge in the node_map
+                let to_node = edge.to_node * 2 + if edge.to_side { 0 } else { 1 };
+
+                if node_map.len() <= to_node {
+                    node_map.resize(to_node + 1, MappedNode::Unmapped);
+                }
+                if node_map[to_node] != MappedNode::Unmapped {
+                    node_map[n1] = if !edge.to_side {
+                        node_map[to_node]
+                    } else {
+                        // If the edge changes sides, the node is mirrored
+                        node_map[to_node].mirror()
+                    };
+                    assign_to_neighbors = true;
+                    break;
+                }
+            }
+
+            // If no neighbor was found, create a new binode and also assign it to the neighbors
+            if node_map[n1] == MappedNode::Unmapped {
+                if n1_is_self_mirror {
+                    let n1s = graph.add_node(NodeData::default());
+                    graph.set_mirror_nodes(n1s, n1s);
+                    node_map[n1] = MappedNode::SelfMirror(n1s);
+                } else {
+                    let n1f = graph.add_node(NodeData::default());
+                    let n1r = graph.add_node(NodeData::default());
+                    graph.set_mirror_nodes(n1f, n1r);
+                    node_map[n1] = MappedNode::Normal {
+                        forward: n1f,
+                        backward: n1r,
+                    };
+                }
+                assign_to_neighbors = true;
+            }
+
+            if assign_to_neighbors {
+                // Assign the new node also to the neighbors
+                for edge in record
+                    .edges
+                    .iter()
+                    // Incoming edges to n1 are outgoing on its reverse complement
+                    .filter(|edge| !edge.from_side)
+                {
+                    // Location of the to_node of the edge in the node_map
+                    let to_node = edge.to_node * 2 + if edge.to_side { 0 } else { 1 };
+                    node_map[to_node] = if !edge.to_side {
+                        node_map[n1]
+                    } else {
+                        // If the edge changes sides, the node is mirrored
+                        node_map[n1].mirror()
+                    };
+                }
+            }
+        }
+
+        // If the record has no known outgoing binode yet
+        if node_map[n2] == MappedNode::Unmapped {
+            let mut assign_to_neighbors = false;
+
+            if edge_is_self_mirror {
+                node_map[n2] = node_map[n1].mirror();
+                // not sure if needed, but should be rare enough that it is not worth to think about it
+                assign_to_neighbors = true;
+            } else {
+                // If the record has no known outgoing binode yet, first search if one of the neighbors exist
+                for edge in record
+                    .edges
+                    .iter()
+                    // Outgoing edges from n1 are outgoing from its forward variant
+                    .filter(|edge| edge.from_side)
+                {
+                    // Location of the to_node of the edge in the node_map
+                    let to_node = edge.to_node * 2 + if edge.to_side { 0 } else { 1 };
+
+                    if node_map.len() <= to_node {
+                        node_map.resize(to_node + 1, MappedNode::Unmapped);
+                    }
+                    if node_map[to_node] != MappedNode::Unmapped {
+                        node_map[n2] = if edge.to_side {
+                            node_map[to_node]
+                        } else {
+                            // If the edge changes sides, the node is mirrored
+                            node_map[to_node].mirror()
+                        };
+                        assign_to_neighbors = true;
+                        break;
+                    }
+                }
+
+                // If no neighbor was found, create a new binode and also assign it to the neighbors
+                if node_map[n2] == MappedNode::Unmapped {
+                    if n2_is_self_mirror {
+                        let n2s = graph.add_node(NodeData::default());
+                        graph.set_mirror_nodes(n2s, n2s);
+                        node_map[n2] = MappedNode::SelfMirror(n2s);
+                    } else {
+                        let n2f = graph.add_node(NodeData::default());
+                        let n2r = graph.add_node(NodeData::default());
+                        graph.set_mirror_nodes(n2f, n2r);
+                        node_map[n2] = MappedNode::Normal {
+                            forward: n2f,
+                            backward: n2r,
+                        };
+                    }
+                    assign_to_neighbors = true;
+                }
+            }
+
+            if assign_to_neighbors {
+                // Assign the new node also to the neighbors
+                for edge in record
+                    .edges
+                    .iter()
+                    // Outgoing edges from n1 are outgoing from its forward variant
+                    .filter(|edge| edge.from_side)
+                {
+                    // Location of the to_node of the edge in the node_map
+                    let to_node = edge.to_node * 2 + if edge.to_side { 0 } else { 1 };
+                    node_map[to_node] = if edge.to_side {
+                        node_map[n2]
+                    } else {
+                        // If the edge changes sides, the node is mirrored
+                        node_map[n2].mirror()
+                    };
+                }
+            }
+        }
+
+        debug_assert_ne!(node_map[n1], MappedNode::Unmapped);
+        debug_assert_ne!(node_map[n2], MappedNode::Unmapped);
+
+        let (n1f, n1r) = match node_map[n1] {
+            MappedNode::Unmapped => unreachable!(),
+            MappedNode::Normal { forward, backward } => (forward, backward),
+            MappedNode::SelfMirror(node) => (node, node),
+        };
+        let (n2f, n2r) = match node_map[n2] {
+            MappedNode::Unmapped => unreachable!(),
+            MappedNode::Normal { forward, backward } => (forward, backward),
+            MappedNode::SelfMirror(node) => (node, node),
+        };
+
+        let edge_data: EdgeData = record.into();
+        graph.add_edge(n1f, n2f, edge_data.clone());
+        graph.add_edge(n2r, n1r, edge_data.mirror());
+    }
+
+    println!("{:?}", node_map);
+
+    Ok(graph)
 }
 
 /// Write a genome graph in bcalm2 fasta format from an edge-centric representation to a file.
@@ -794,9 +1084,15 @@ where
             write!(printed_node_id, "{}", node_data.id).map_err(Error::from)?;
             let node_description =
                 write_plain_bcalm2_node_data_to_bcalm2(&node_data, out_neighbors)?;
-            let node_sequence = source_sequence_store
-                .get(&node_data.sequence_handle)
-                .clone_as_vec();
+            let node_sequence = source_sequence_store.get(&node_data.sequence_handle);
+            let node_sequence = if node_data.forwards {
+                node_sequence.clone_as_vec()
+            } else {
+                node_sequence
+                    .reverse_complement_iter()
+                    .map(|c| c.into())
+                    .collect()
+            };
 
             writer
                 .write(&printed_node_id, Some(&node_description), &node_sequence)
@@ -810,10 +1106,13 @@ where
 #[cfg(test)]
 mod tests {
     use crate::io::bcalm2::{
-        read_bigraph_from_bcalm2_as_edge_centric, read_bigraph_from_bcalm2_as_node_centric,
-        write_edge_centric_bigraph_to_bcalm2, write_node_centric_bigraph_to_bcalm2,
+        read_bigraph_from_bcalm2_as_edge_centric, read_bigraph_from_bcalm2_as_edge_centric_old,
+        read_bigraph_from_bcalm2_as_node_centric, write_edge_centric_bigraph_to_bcalm2,
+        write_node_centric_bigraph_to_bcalm2,
     };
     use crate::types::{PetBCalm2EdgeGraph, PetBCalm2NodeGraph};
+    use bigraph::interface::static_bigraph::StaticBigraph;
+    use bigraph::traitgraph::interface::{Edge, ImmutableGraphContainer};
     use compact_genome::implementation::DefaultSequenceStore;
     use compact_genome::interface::alphabet::dna_alphabet::DnaAlphabet;
 
@@ -867,11 +1166,25 @@ mod tests {
             3,
         )
         .unwrap();
+        let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+
         let mut output = Vec::new();
         write_edge_centric_bigraph_to_bcalm2(
             &graph,
             &sequence_store,
             bio::io::fasta::Writer::new(&mut output),
+        )
+        .unwrap();
+        let mut old_output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &old_graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut old_output),
         )
         .unwrap();
 
@@ -881,6 +1194,13 @@ mod tests {
             "in:\n{}\n\nout:\n{}\n",
             String::from_utf8(input.clone()).unwrap(),
             String::from_utf8(output.clone()).unwrap()
+        );
+        debug_assert_eq!(
+            output,
+            old_output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(output.clone()).unwrap(),
+            String::from_utf8(old_output.clone()).unwrap()
         );
     }
 
@@ -903,6 +1223,13 @@ mod tests {
             3,
         )
         .unwrap();
+        let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+
         let mut output = Vec::new();
         write_edge_centric_bigraph_to_bcalm2(
             &graph,
@@ -910,13 +1237,36 @@ mod tests {
             bio::io::fasta::Writer::new(&mut output),
         )
         .unwrap();
+        let mut old_output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &old_graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut old_output),
+        )
+        .unwrap();
 
+        // expect self-loops
+        assert_eq!(graph.node_count(), 6);
+        assert!(graph
+            .node_indices()
+            .all(|node| !graph.is_self_mirror_node(node)));
+        assert_eq!(old_graph.node_count(), 6);
+        assert!(old_graph
+            .node_indices()
+            .all(|node| !old_graph.is_self_mirror_node(node)));
         debug_assert_eq!(
             input,
             output,
             "in:\n{}\n\nout:\n{}\n",
             String::from_utf8(input.clone()).unwrap(),
             String::from_utf8(output.clone()).unwrap()
+        );
+        debug_assert_eq!(
+            output,
+            old_output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(output.clone()).unwrap(),
+            String::from_utf8(old_output.clone()).unwrap()
         );
     }
 
@@ -938,6 +1288,13 @@ mod tests {
             3,
         )
         .unwrap();
+        let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+
         let mut output = Vec::new();
         write_edge_centric_bigraph_to_bcalm2(
             &graph,
@@ -945,13 +1302,36 @@ mod tests {
             bio::io::fasta::Writer::new(&mut output),
         )
         .unwrap();
+        let mut old_output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &old_graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut old_output),
+        )
+        .unwrap();
 
+        // expect self-mirror nodes
+        assert_eq!(graph.node_count(), 7);
+        assert!(graph
+            .node_indices()
+            .any(|node| graph.is_self_mirror_node(node)));
+        assert_eq!(old_graph.node_count(), 7);
+        assert!(old_graph
+            .node_indices()
+            .any(|node| old_graph.is_self_mirror_node(node)));
         debug_assert_eq!(
             input,
             output,
             "in:\n{}\n\nout:\n{}\n",
             String::from_utf8(input.clone()).unwrap(),
             String::from_utf8(output.clone()).unwrap()
+        );
+        debug_assert_eq!(
+            output,
+            old_output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(output.clone()).unwrap(),
+            String::from_utf8(old_output.clone()).unwrap()
         );
     }
 
@@ -973,6 +1353,13 @@ mod tests {
             3,
         )
         .unwrap();
+        let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+
         let mut output = Vec::new();
         write_edge_centric_bigraph_to_bcalm2(
             &graph,
@@ -980,13 +1367,36 @@ mod tests {
             bio::io::fasta::Writer::new(&mut output),
         )
         .unwrap();
+        let mut old_output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &old_graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut old_output),
+        )
+        .unwrap();
 
+        // expect self-mirror nodes
+        assert_eq!(graph.node_count(), 7);
+        assert!(graph
+            .node_indices()
+            .any(|node| graph.is_self_mirror_node(node)));
+        assert_eq!(old_graph.node_count(), 7);
+        assert!(old_graph
+            .node_indices()
+            .any(|node| old_graph.is_self_mirror_node(node)));
         debug_assert_eq!(
             input,
             output,
             "in:\n{}\n\nout:\n{}\n",
             String::from_utf8(input.clone()).unwrap(),
             String::from_utf8(output.clone()).unwrap()
+        );
+        debug_assert_eq!(
+            output,
+            old_output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(output.clone()).unwrap(),
+            String::from_utf8(old_output.clone()).unwrap()
         );
     }
 
@@ -1009,6 +1419,13 @@ mod tests {
             3,
         )
         .unwrap();
+        let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+
         let mut output = Vec::new();
         write_edge_centric_bigraph_to_bcalm2(
             &graph,
@@ -1016,7 +1433,31 @@ mod tests {
             bio::io::fasta::Writer::new(&mut output),
         )
         .unwrap();
+        let mut old_output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &old_graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut old_output),
+        )
+        .unwrap();
 
+        // expect self-mirror nodes but not edges
+        assert_eq!(graph.node_count(), 6);
+        assert!(graph
+            .node_indices()
+            .any(|node| graph.is_self_mirror_node(node)));
+        assert!(graph.edge_indices().all(|edge| {
+            let Edge { from_node, to_node } = graph.edge_endpoints(edge);
+            graph.mirror_node(from_node) != Some(to_node)
+        }));
+        assert_eq!(old_graph.node_count(), 6);
+        assert!(old_graph
+            .node_indices()
+            .any(|node| old_graph.is_self_mirror_node(node)));
+        assert!(old_graph.edge_indices().all(|edge| {
+            let Edge { from_node, to_node } = old_graph.edge_endpoints(edge);
+            old_graph.mirror_node(from_node) != Some(to_node)
+        }));
         debug_assert_eq!(
             input,
             output,
@@ -1024,16 +1465,23 @@ mod tests {
             String::from_utf8(input.clone()).unwrap(),
             String::from_utf8(output.clone()).unwrap()
         );
+        debug_assert_eq!(
+            output,
+            old_output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(output.clone()).unwrap(),
+            String::from_utf8(old_output.clone()).unwrap()
+        );
     }
 
     #[test]
-    fn test_edge_read_write_all_loops() {
-        let test_file: &'static [u8] = b">0 LN:i:4 KC:i:4 km:f:3.0 L:+:0:- L:+:0:+ L:+:1:- L:+:2:+ L:-:0:- L:-:0:+ L:-:1:- L:-:2:+\n\
-            ATAT\n\
-            >1 LN:i:14 KC:i:2 km:f:3.2 L:+:0:- L:+:0:+ L:+:1:- L:+:2:+\n\
-            TCTCGGAAGTAAAT\n\
-            >2 LN:i:6 KC:i:15 km:f:2.2 L:-:0:- L:-:0:+ L:-:1:- L:-:2:+\n\
-            ATGATG\n";
+    fn test_edge_read_self_mirror_edge() {
+        let test_file: &'static [u8] = b">0 LN:i:5 KC:i:4 km:f:3.0 L:+:1:+ L:-:1:+\n\
+            ACTGT\n\
+            >1 LN:i:4 KC:i:2 km:f:3.2 L:-:0:- L:-:0:+ L:-:2:-\n\
+            GTTC\n\
+            >2 LN:i:4 KC:i:15 km:f:2.2 L:+:1:+\n\
+            GGGT\n";
         let input = Vec::from(test_file);
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
@@ -1043,6 +1491,13 @@ mod tests {
             3,
         )
         .unwrap();
+        let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+
         let mut output = Vec::new();
         write_edge_centric_bigraph_to_bcalm2(
             &graph,
@@ -1050,13 +1505,44 @@ mod tests {
             bio::io::fasta::Writer::new(&mut output),
         )
         .unwrap();
+        let mut old_output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &old_graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut old_output),
+        )
+        .unwrap();
 
+        // expect self-mirror edges
+        assert_eq!(graph.node_count(), 6);
+        assert!(graph
+            .node_indices()
+            .all(|node| !graph.is_self_mirror_node(node)));
+        assert!(graph.edge_indices().any(|edge| {
+            let Edge { from_node, to_node } = graph.edge_endpoints(edge);
+            graph.mirror_node(from_node) == Some(to_node)
+        }));
+        assert_eq!(old_graph.node_count(), 6);
+        assert!(old_graph
+            .node_indices()
+            .all(|node| !old_graph.is_self_mirror_node(node)));
+        assert!(old_graph.edge_indices().any(|edge| {
+            let Edge { from_node, to_node } = old_graph.edge_endpoints(edge);
+            old_graph.mirror_node(from_node) == Some(to_node)
+        }));
         debug_assert_eq!(
             input,
             output,
             "in:\n{}\n\nout:\n{}\n",
             String::from_utf8(input.clone()).unwrap(),
             String::from_utf8(output.clone()).unwrap()
+        );
+        debug_assert_eq!(
+            output,
+            old_output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(output.clone()).unwrap(),
+            String::from_utf8(old_output.clone()).unwrap()
         );
     }
 
@@ -1078,11 +1564,25 @@ mod tests {
             3,
         )
         .unwrap();
+        let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+
         let mut output = Vec::new();
         write_edge_centric_bigraph_to_bcalm2(
             &graph,
             &sequence_store,
             bio::io::fasta::Writer::new(&mut output),
+        )
+        .unwrap();
+        let mut old_output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &old_graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut old_output),
         )
         .unwrap();
 
@@ -1092,6 +1592,13 @@ mod tests {
             "in:\n{}\n\nout:\n{}\n",
             String::from_utf8(input.clone()).unwrap(),
             String::from_utf8(output.clone()).unwrap()
+        );
+        debug_assert_eq!(
+            output,
+            old_output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(output.clone()).unwrap(),
+            String::from_utf8(old_output.clone()).unwrap()
         );
     }
 
@@ -1113,11 +1620,25 @@ mod tests {
             3,
         )
         .unwrap();
+        let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+
         let mut output = Vec::new();
         write_edge_centric_bigraph_to_bcalm2(
             &graph,
             &sequence_store,
             bio::io::fasta::Writer::new(&mut output),
+        )
+        .unwrap();
+        let mut old_output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &old_graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut old_output),
         )
         .unwrap();
 
@@ -1127,6 +1648,13 @@ mod tests {
             "in:\n{}\n\nout:\n{}\n",
             String::from_utf8(input.clone()).unwrap(),
             String::from_utf8(output.clone()).unwrap()
+        );
+        debug_assert_eq!(
+            output,
+            old_output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(output.clone()).unwrap(),
+            String::from_utf8(old_output.clone()).unwrap()
         );
     }
 }
