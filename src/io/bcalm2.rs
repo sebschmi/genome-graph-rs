@@ -794,11 +794,6 @@ where
             to_side: false,
         });
 
-        assert!(
-            !(edge_is_self_mirror && (n1_is_self_mirror || n2_is_self_mirror)),
-            "A de Bruijn graph cannot have both self-mirror nodes and edges"
-        );
-
         if node_map.len() <= n2 {
             node_map.resize(n2 + 1, MappedNode::Unmapped);
         }
@@ -1526,6 +1521,78 @@ mod tests {
         assert!(old_graph
             .node_indices()
             .all(|node| !old_graph.is_self_mirror_node(node)));
+        assert!(old_graph.edge_indices().any(|edge| {
+            let Edge { from_node, to_node } = old_graph.edge_endpoints(edge);
+            old_graph.mirror_node(from_node) == Some(to_node)
+        }));
+        debug_assert_eq!(
+            input,
+            output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(input.clone()).unwrap(),
+            String::from_utf8(output.clone()).unwrap()
+        );
+        debug_assert_eq!(
+            output,
+            old_output,
+            "in:\n{}\n\nout:\n{}\n",
+            String::from_utf8(output.clone()).unwrap(),
+            String::from_utf8(old_output.clone()).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_edge_read_self_mirror_node_and_edge() {
+        let test_file: &'static [u8] = b">0 LN:i:5 KC:i:4 km:f:3.0 L:+:0:- L:+:0:+ L:+:1:+ L:+:2:- L:-:0:- L:-:0:+ L:-:1:+ L:-:2:-\n\
+            ATTAT\n\
+            >1 LN:i:5 KC:i:2 km:f:3.2 L:-:0:- L:-:0:+ L:-:1:+ L:-:2:-\n\
+            ATGTC\n\
+            >2 LN:i:4 KC:i:15 km:f:2.2 L:+:0:- L:+:0:+ L:+:1:+ L:+:2:-\n\
+            GGAT\n";
+        let input = Vec::from(test_file);
+        let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
+
+        let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+        let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
+            bio::io::fasta::Reader::new(test_file),
+            &mut sequence_store,
+            3,
+        )
+        .unwrap();
+
+        let mut output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut output),
+        )
+        .unwrap();
+        let mut old_output = Vec::new();
+        write_edge_centric_bigraph_to_bcalm2(
+            &old_graph,
+            &sequence_store,
+            bio::io::fasta::Writer::new(&mut old_output),
+        )
+        .unwrap();
+
+        // expect self-mirror edges
+        assert_eq!(graph.node_count(), 5);
+        assert!(graph
+            .node_indices()
+            .any(|node| graph.is_self_mirror_node(node)));
+        assert!(graph.edge_indices().any(|edge| {
+            let Edge { from_node, to_node } = graph.edge_endpoints(edge);
+            graph.mirror_node(from_node) == Some(to_node)
+        }));
+        assert_eq!(old_graph.node_count(), 5);
+        assert!(old_graph
+            .node_indices()
+            .any(|node| old_graph.is_self_mirror_node(node)));
         assert!(old_graph.edge_indices().any(|edge| {
             let Edge { from_node, to_node } = old_graph.edge_endpoints(edge);
             old_graph.mirror_node(from_node) == Some(to_node)
