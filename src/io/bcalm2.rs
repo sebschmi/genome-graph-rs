@@ -957,8 +957,6 @@ where
         graph.add_edge(n2r, n1r, edge_data.mirror());
     }
 
-    println!("{:?}", node_map);
-
     Ok(graph)
 }
 
