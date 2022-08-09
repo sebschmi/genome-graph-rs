@@ -14,6 +14,7 @@ use std::fs::File;
 use std::hash::Hash;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+#[cfg(traitgraph_algo)]
 use traitgraph_algo::dijkstra::DijkstraWeightedEdgeData;
 
 /// Type of graphs read from gfa files.
@@ -57,6 +58,7 @@ impl<SequenceHandle: Clone, Data: BidirectedData> BidirectedData
     }
 }
 
+#[cfg(traitgraph_algo)]
 impl<SequenceHandle, Data: DijkstraWeightedEdgeData<usize>> DijkstraWeightedEdgeData<usize>
     for BidirectedGfaNodeData<SequenceHandle, Data>
 {
