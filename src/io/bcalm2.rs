@@ -13,7 +13,9 @@ use compact_genome::interface::sequence_store::SequenceStore;
 use num_traits::NumCast;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Write};
+use std::fs::File;
 use std::hash::Hash;
+use std::io::BufReader;
 use std::path::Path;
 
 error_chain! {
@@ -365,7 +367,7 @@ pub fn read_bigraph_from_bcalm2_as_node_centric_from_file<
     target_sequence_store: &mut GenomeSequenceStore,
 ) -> crate::error::Result<Graph> {
     read_bigraph_from_bcalm2_as_node_centric(
-        bio::io::fasta::Reader::from_file(path).map_err(Error::from)?,
+        BufReader::new(File::open(path)?),
         target_sequence_store,
     )
 }
@@ -379,7 +381,7 @@ pub fn read_bigraph_from_bcalm2_as_node_centric<
     EdgeData: Default + Clone,
     Graph: DynamicNodeCentricBigraph<NodeData = NodeData, EdgeData = EdgeData> + Default,
 >(
-    reader: bio::io::fasta::Reader<R>,
+    reader: R,
     target_sequence_store: &mut GenomeSequenceStore,
 ) -> crate::error::Result<Graph> {
     struct BiEdge {
@@ -387,6 +389,7 @@ pub fn read_bigraph_from_bcalm2_as_node_centric<
         plain_edge: PlainBCalm2Edge,
     }
 
+    let reader = bio::io::fasta::Reader::new(reader);
     let mut bigraph = Graph::default();
     let mut edges = Vec::new();
 
@@ -1108,6 +1111,7 @@ mod tests {
     use bigraph::traitgraph::interface::{Edge, ImmutableGraphContainer};
     use compact_genome::implementation::DefaultSequenceStore;
     use compact_genome::interface::alphabet::dna_alphabet::DnaAlphabet;
+    use std::io::BufReader;
 
     #[test]
     fn test_node_read_write() {
@@ -1121,7 +1125,7 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2NodeGraph<_> = read_bigraph_from_bcalm2_as_node_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
         )
         .unwrap();

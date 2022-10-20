@@ -16,7 +16,9 @@ use compact_genome::interface::sequence::{
 use compact_genome::interface::sequence_store::SequenceStore;
 use std::collections::HashMap;
 use std::fmt::{Debug, Write};
+use std::fs::File;
 use std::hash::Hash;
+use std::io::BufReader;
 use std::path::Path;
 
 error_chain! {
@@ -539,7 +541,7 @@ where
     <GenomeSequenceStore as SequenceStore<AlphabetType>>::Handle: Clone,
 {
     read_bigraph_from_fasta_as_edge_centric(
-        bio::io::fasta::Reader::from_file(path).map_err(Error::from)?,
+        BufReader::new(File::open(path)?),
         target_sequence_store,
         kmer_size,
     )
@@ -588,7 +590,7 @@ pub fn read_bigraph_from_fasta_as_edge_centric<
     EdgeData: From<FastaNodeData<GenomeSequenceStore::Handle>> + Clone + Eq + BidirectedData,
     Graph: DynamicEdgeCentricBigraph<NodeData = NodeData, EdgeData = EdgeData> + Default,
 >(
-    reader: bio::io::fasta::Reader<R>,
+    reader: R,
     target_sequence_store: &mut GenomeSequenceStore,
     kmer_size: usize,
 ) -> crate::error::Result<Graph>
@@ -596,6 +598,7 @@ where
     <Graph as GraphBase>::NodeIndex: Clone,
     <GenomeSequenceStore as SequenceStore<AlphabetType>>::Handle: Clone,
 {
+    let reader = bio::io::fasta::Reader::new(reader);
     let mut bigraph = Graph::default();
     let mut id_map = HashMap::new();
     let node_kmer_size = kmer_size - 1;
