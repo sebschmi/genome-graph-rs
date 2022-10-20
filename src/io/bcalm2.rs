@@ -593,7 +593,7 @@ where
     <GenomeSequenceStore as SequenceStore<AlphabetType>>::Handle: Clone,
 {
     read_bigraph_from_bcalm2_as_edge_centric(
-        bio::io::fasta::Reader::from_file(path).map_err(Error::from)?,
+        BufReader::new(File::open(path)?),
         target_sequence_store,
         kmer_size,
     )
@@ -643,7 +643,7 @@ fn read_bigraph_from_bcalm2_as_edge_centric_old<
     EdgeData: From<PlainBCalm2NodeData<GenomeSequenceStore::Handle>> + Clone + Eq + BidirectedData,
     Graph: DynamicEdgeCentricBigraph<NodeData = NodeData, EdgeData = EdgeData> + Default,
 >(
-    reader: bio::io::fasta::Reader<R>,
+    reader: R,
     target_sequence_store: &mut GenomeSequenceStore,
     kmer_size: usize,
 ) -> crate::error::Result<Graph>
@@ -651,6 +651,7 @@ where
     <Graph as GraphBase>::NodeIndex: Clone,
     <GenomeSequenceStore as SequenceStore<AlphabetType>>::Handle: Clone,
 {
+    let reader = bio::io::fasta::Reader::new(reader);
     let mut bigraph = Graph::default();
     let mut id_map = HashMap::new();
     let node_kmer_size = kmer_size - 1;
@@ -761,7 +762,7 @@ pub fn read_bigraph_from_bcalm2_as_edge_centric<
     EdgeData: From<PlainBCalm2NodeData<GenomeSequenceStore::Handle>> + Clone + Eq + BidirectedData,
     Graph: DynamicEdgeCentricBigraph<NodeData = NodeData, EdgeData = EdgeData> + Default,
 >(
-    reader: bio::io::fasta::Reader<R>,
+    reader: R,
     target_sequence_store: &mut GenomeSequenceStore,
     kmer_size: usize,
 ) -> crate::error::Result<Graph>
@@ -769,6 +770,7 @@ where
     <Graph as GraphBase>::NodeIndex: Clone,
     <GenomeSequenceStore as SequenceStore<AlphabetType>>::Handle: Clone,
 {
+    let reader = bio::io::fasta::Reader::new(reader);
     let mut node_map: Vec<MappedNode<Graph>> = Vec::new();
     let mut graph = Graph::default();
 
@@ -979,11 +981,7 @@ pub fn write_edge_centric_bigraph_to_bcalm2_to_file<
 where
     for<'a> PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a EdgeData>,
 {
-    write_edge_centric_bigraph_to_bcalm2(
-        graph,
-        source_sequence_store,
-        bio::io::fasta::Writer::to_file(path).map_err(Error::from)?,
-    )
+    write_edge_centric_bigraph_to_bcalm2(graph, source_sequence_store, File::create(path)?)
 }
 
 /// Write a genome graph in bcalm2 fasta format from an edge-centric representation.
@@ -997,11 +995,12 @@ pub fn write_edge_centric_bigraph_to_bcalm2<
 >(
     graph: &Graph,
     source_sequence_store: &GenomeSequenceStore,
-    mut writer: bio::io::fasta::Writer<W>,
+    writer: W,
 ) -> crate::error::Result<()>
 where
     for<'a> PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a EdgeData>,
 {
+    let mut writer = bio::io::fasta::Writer::new(writer);
     let mut output_edges = vec![false; graph.edge_count()];
 
     for edge_id in graph.edge_indices() {
@@ -1158,32 +1157,22 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
         let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
 
         let mut output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&graph, &sequence_store, &mut output).unwrap();
         let mut old_output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &old_graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut old_output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&old_graph, &sequence_store, &mut old_output).unwrap();
 
         debug_assert_eq!(
             input,
@@ -1215,32 +1204,22 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
         let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
 
         let mut output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&graph, &sequence_store, &mut output).unwrap();
         let mut old_output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &old_graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut old_output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&old_graph, &sequence_store, &mut old_output).unwrap();
 
         // expect self-loops
         assert_eq!(graph.node_count(), 6);
@@ -1280,32 +1259,22 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
         let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
 
         let mut output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&graph, &sequence_store, &mut output).unwrap();
         let mut old_output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &old_graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut old_output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&old_graph, &sequence_store, &mut old_output).unwrap();
 
         // expect self-mirror nodes
         assert_eq!(graph.node_count(), 7);
@@ -1345,32 +1314,22 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
         let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
 
         let mut output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&graph, &sequence_store, &mut output).unwrap();
         let mut old_output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &old_graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut old_output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&old_graph, &sequence_store, &mut old_output).unwrap();
 
         // expect self-mirror nodes
         assert_eq!(graph.node_count(), 7);
@@ -1411,32 +1370,22 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
         let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
 
         let mut output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&graph, &sequence_store, &mut output).unwrap();
         let mut old_output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &old_graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut old_output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&old_graph, &sequence_store, &mut old_output).unwrap();
 
         // expect self-mirror nodes but not edges
         assert_eq!(graph.node_count(), 6);
@@ -1483,32 +1432,22 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
         let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
 
         let mut output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&graph, &sequence_store, &mut output).unwrap();
         let mut old_output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &old_graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut old_output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&old_graph, &sequence_store, &mut old_output).unwrap();
 
         // expect self-mirror edges
         assert_eq!(graph.node_count(), 6);
@@ -1555,32 +1494,22 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
         let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
 
         let mut output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&graph, &sequence_store, &mut output).unwrap();
         let mut old_output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &old_graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut old_output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&old_graph, &sequence_store, &mut old_output).unwrap();
 
         // expect self-mirror edges
         assert_eq!(graph.node_count(), 5);
@@ -1628,32 +1557,22 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
         let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
 
         let mut output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&graph, &sequence_store, &mut output).unwrap();
         let mut old_output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &old_graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut old_output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&old_graph, &sequence_store, &mut old_output).unwrap();
 
         debug_assert_eq!(
             input,
@@ -1684,32 +1603,22 @@ mod tests {
         let mut sequence_store = DefaultSequenceStore::<DnaAlphabet>::default();
 
         let graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
         let old_graph: PetBCalm2EdgeGraph<_> = read_bigraph_from_bcalm2_as_edge_centric_old(
-            bio::io::fasta::Reader::new(test_file),
+            BufReader::new(test_file),
             &mut sequence_store,
             3,
         )
         .unwrap();
 
         let mut output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&graph, &sequence_store, &mut output).unwrap();
         let mut old_output = Vec::new();
-        write_edge_centric_bigraph_to_bcalm2(
-            &old_graph,
-            &sequence_store,
-            bio::io::fasta::Writer::new(&mut old_output),
-        )
-        .unwrap();
+        write_edge_centric_bigraph_to_bcalm2(&old_graph, &sequence_store, &mut old_output).unwrap();
 
         debug_assert_eq!(
             input,
