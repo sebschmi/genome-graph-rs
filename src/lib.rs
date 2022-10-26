@@ -13,6 +13,8 @@ extern crate log;
 
 /// Contains the error types used by this crate.
 pub mod error;
+/// A module providing types and functions for IO in a generic node-centric format.
+pub mod generic;
 /// Contains functions for reading and writing genome graphs.
 pub mod io;
 /// Contains type aliases for genome graphs.

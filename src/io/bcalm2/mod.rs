@@ -1,5 +1,6 @@
 use crate::bigraph::interface::dynamic_bigraph::DynamicEdgeCentricBigraph;
 use crate::bigraph::interface::dynamic_bigraph::DynamicNodeCentricBigraph;
+use crate::generic::MappedNode;
 use crate::io::SequenceData;
 use bigraph::interface::{dynamic_bigraph::DynamicBigraph, BidirectedData};
 use bigraph::traitgraph::index::GraphIndex;
@@ -12,7 +13,7 @@ use compact_genome::interface::sequence::{GenomeSequence, OwnedGenomeSequence};
 use compact_genome::interface::sequence_store::SequenceStore;
 use num_traits::NumCast;
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter, Write};
+use std::fmt::{Debug, Write};
 use std::fs::File;
 use std::hash::Hash;
 use std::io::BufReader;
@@ -681,77 +682,6 @@ where
     debug_assert!(bigraph.verify_edge_mirror_property());
     Ok(bigraph)
 }
-
-enum MappedNode<Graph: GraphBase> {
-    Unmapped,
-    Normal {
-        forward: Graph::NodeIndex,
-        backward: Graph::NodeIndex,
-    },
-    SelfMirror(Graph::NodeIndex),
-}
-
-impl<Graph: GraphBase> MappedNode<Graph> {
-    fn mirror(self) -> Self {
-        match self {
-            MappedNode::Unmapped => MappedNode::Unmapped,
-            MappedNode::Normal { forward, backward } => MappedNode::Normal {
-                forward: backward,
-                backward: forward,
-            },
-            MappedNode::SelfMirror(node) => MappedNode::SelfMirror(node),
-        }
-    }
-}
-
-impl<Graph: GraphBase> std::fmt::Debug for MappedNode<Graph> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MappedNode::Unmapped => write!(f, "unmapped"),
-            MappedNode::Normal { forward, backward } => {
-                write!(f, "({}, {})", forward.as_usize(), backward.as_usize())
-            }
-            MappedNode::SelfMirror(node) => write!(f, "{}", node.as_usize()),
-        }
-    }
-}
-
-impl<Graph: GraphBase> Clone for MappedNode<Graph> {
-    fn clone(&self) -> Self {
-        match self {
-            MappedNode::Unmapped => MappedNode::Unmapped,
-            MappedNode::Normal { forward, backward } => MappedNode::Normal {
-                forward: *forward,
-                backward: *backward,
-            },
-            MappedNode::SelfMirror(node) => MappedNode::SelfMirror(*node),
-        }
-    }
-}
-
-impl<Graph: GraphBase> Copy for MappedNode<Graph> {}
-
-impl<Graph: GraphBase> PartialEq for MappedNode<Graph> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (MappedNode::Unmapped, MappedNode::Unmapped) => true,
-            (
-                MappedNode::Normal {
-                    forward: f1,
-                    backward: b1,
-                },
-                MappedNode::Normal {
-                    forward: f2,
-                    backward: b2,
-                },
-            ) => f1 == f2 && b1 == b2,
-            (MappedNode::SelfMirror(n1), MappedNode::SelfMirror(n2)) => n1 == n2,
-            _ => false,
-        }
-    }
-}
-
-impl<Graph: GraphBase> Eq for MappedNode<Graph> {}
 
 /// Read a genome graph in bcalm2 fasta format into an edge-centric representation.
 pub fn read_bigraph_from_bcalm2_as_edge_centric<
