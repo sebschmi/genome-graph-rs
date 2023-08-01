@@ -53,11 +53,10 @@ error_chain! {
 /// Data that can be output as fasta record.
 pub trait FastaData<AlphabetType: Alphabet, SourceSequenceStore: SequenceStore<AlphabetType>> {
     /// The type storing the genome sequence of this fasta record.
-    type Genome: for<'a> OwnedGenomeSequence<'a, AlphabetType, Self::GenomeSubsequence>
-        + for<'a> EditableGenomeSequence<'a, AlphabetType, Self::GenomeSubsequence>;
+    type Genome: OwnedGenomeSequence<AlphabetType, Self::GenomeSubsequence>
+        + EditableGenomeSequence<AlphabetType, Self::GenomeSubsequence>;
     /// The subsequence type of `Genome`.
-    type GenomeSubsequence: for<'a> GenomeSequence<'a, AlphabetType, Self::GenomeSubsequence>
-        + ?Sized;
+    type GenomeSubsequence: GenomeSequence<AlphabetType, Self::GenomeSubsequence> + ?Sized;
 
     /// Returns the sequence of this fasta record.
     fn sequence<'a>(
@@ -73,8 +72,8 @@ pub fn write_walks_as_fasta<
     SourceSequenceStore: SequenceStore<AlphabetType>,
     EdgeData: SequenceData<AlphabetType, SourceSequenceStore>,
     Graph: ImmutableGraphContainer<EdgeData = EdgeData>,
-    Walk: 'ws + for<'w> EdgeWalk<'w, Graph, Subwalk>,
-    Subwalk: for<'w> EdgeWalk<'w, Graph, Subwalk> + ?Sized,
+    Walk: 'ws + EdgeWalk<Graph, Subwalk>,
+    Subwalk: EdgeWalk<Graph, Subwalk> + ?Sized,
     WalkSource: 'ws + IntoIterator<Item = &'ws Walk>,
     Writer: std::io::Write,
 >(
@@ -121,8 +120,8 @@ pub fn write_walks_as_fasta_file<
     SourceSequenceStore: SequenceStore<AlphabetType>,
     EdgeData: SequenceData<AlphabetType, SourceSequenceStore>,
     Graph: ImmutableGraphContainer<EdgeData = EdgeData>,
-    Walk: 'ws + for<'w> EdgeWalk<'w, Graph, Subwalk>,
-    Subwalk: for<'w> EdgeWalk<'w, Graph, Subwalk> + ?Sized,
+    Walk: 'ws + EdgeWalk<Graph, Subwalk>,
+    Subwalk: EdgeWalk<Graph, Subwalk> + ?Sized,
     WalkSource: 'ws + IntoIterator<Item = &'ws Walk>,
     P: AsRef<Path>,
 >(
@@ -148,8 +147,8 @@ pub fn write_node_centric_walks_as_fasta<
     SourceSequenceStore: SequenceStore<AlphabetType>,
     NodeData: SequenceData<AlphabetType, SourceSequenceStore>,
     Graph: ImmutableGraphContainer<NodeData = NodeData>,
-    Walk: 'ws + for<'w> NodeWalk<'w, Graph, Subwalk>,
-    Subwalk: for<'w> NodeWalk<'w, Graph, Subwalk> + ?Sized,
+    Walk: 'ws + NodeWalk<Graph, Subwalk>,
+    Subwalk: NodeWalk<Graph, Subwalk> + ?Sized,
     WalkSource: 'ws + IntoIterator<Item = &'ws Walk>,
     Writer: std::io::Write,
 >(
@@ -196,8 +195,8 @@ pub fn write_node_centric_walks_as_fasta_file<
     SourceSequenceStore: SequenceStore<AlphabetType>,
     NodeData: SequenceData<AlphabetType, SourceSequenceStore>,
     Graph: ImmutableGraphContainer<NodeData = NodeData>,
-    Walk: 'ws + for<'w> NodeWalk<'w, Graph, Subwalk>,
-    Subwalk: for<'w> NodeWalk<'w, Graph, Subwalk> + ?Sized,
+    Walk: 'ws + NodeWalk<Graph, Subwalk>,
+    Subwalk: NodeWalk<Graph, Subwalk> + ?Sized,
     WalkSource: 'ws + IntoIterator<Item = &'ws Walk>,
     P: AsRef<Path>,
 >(
@@ -224,8 +223,8 @@ pub fn write_node_centric_walks_with_variable_overlaps_as_fasta<
     SourceSequenceStore: SequenceStore<AlphabetType>,
     NodeData: SequenceData<AlphabetType, SourceSequenceStore>,
     Graph: StaticGraph<NodeData = NodeData, EdgeData = BidirectedGfaEdgeData<()>>,
-    Walk: 'ws + for<'w> NodeWalk<'w, Graph, Subwalk>,
-    Subwalk: for<'w> NodeWalk<'w, Graph, Subwalk> + ?Sized,
+    Walk: 'ws + NodeWalk<Graph, Subwalk>,
+    Subwalk: NodeWalk<Graph, Subwalk> + ?Sized,
     WalkSource: 'ws + IntoIterator<Item = &'ws Walk>,
     Writer: std::io::Write,
 >(
@@ -274,8 +273,8 @@ pub fn write_node_centric_walks_with_variable_overlaps_as_fasta_file<
     SourceSequenceStore: SequenceStore<AlphabetType>,
     NodeData: SequenceData<AlphabetType, SourceSequenceStore>,
     Graph: StaticGraph<NodeData = NodeData, EdgeData = BidirectedGfaEdgeData<()>>,
-    Walk: 'ws + for<'w> NodeWalk<'w, Graph, Subwalk>,
-    Subwalk: for<'w> NodeWalk<'w, Graph, Subwalk> + ?Sized,
+    Walk: 'ws + NodeWalk<Graph, Subwalk>,
+    Subwalk: NodeWalk<Graph, Subwalk> + ?Sized,
     WalkSource: 'ws + IntoIterator<Item = &'ws Walk>,
     P: AsRef<Path>,
 >(
@@ -414,7 +413,7 @@ pub fn write_node_centric_bigraph_to_bcalm2_to_file<
     path: P,
 ) -> crate::error::Result<()>
     where
-            for<'a> PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a NodeData>,
+             PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a NodeData>,
 {
     write_node_centric_bigraph_to_bcalm2(
         graph,
@@ -436,7 +435,7 @@ pub fn write_node_centric_bigraph_to_bcalm2<
     mut writer: bio::io::fasta::Writer<W>,
 ) -> crate::error::Result<()>
     where
-            for<'a> PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a NodeData>,
+             PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a NodeData>,
 {
     let mut output_nodes = vec![false; graph.node_count()];
 
@@ -550,8 +549,8 @@ where
 fn get_or_create_node<
     Graph: DynamicBigraph,
     AlphabetType: Alphabet,
-    Genome: for<'a> OwnedGenomeSequence<'a, AlphabetType, GenomeSubsequence> + Hash + Eq + Clone,
-    GenomeSubsequence: for<'a> GenomeSequence<'a, AlphabetType, GenomeSubsequence> + ?Sized,
+    Genome: OwnedGenomeSequence<AlphabetType, GenomeSubsequence> + Hash + Eq + Clone,
+    GenomeSubsequence: GenomeSequence<AlphabetType, GenomeSubsequence> + ?Sized,
 >(
     bigraph: &mut Graph,
     id_map: &mut HashMap<Genome, <Graph as GraphBase>::NodeIndex>,
@@ -643,7 +642,7 @@ pub fn write_edge_centric_bigraph_to_fasta_to_file<
     path: P,
 ) -> crate::error::Result<()>
 where
-    for<'a> FastaNodeData<GenomeSequenceStore::Handle>: From<&'a EdgeData>,
+    FastaNodeData<GenomeSequenceStore::Handle>: for<'a> From<&'a EdgeData>,
 {
     write_edge_centric_bigraph_to_fasta(
         graph,
@@ -666,7 +665,7 @@ pub fn write_edge_centric_bigraph_to_fasta<
     mut writer: bio::io::fasta::Writer<W>,
 ) -> crate::error::Result<()>
 where
-    for<'a> FastaNodeData<GenomeSequenceStore::Handle>: From<&'a EdgeData>,
+    FastaNodeData<GenomeSequenceStore::Handle>: for<'a> From<&'a EdgeData>,
 {
     let mut output_edges = vec![false; graph.edge_count()];
 

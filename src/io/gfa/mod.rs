@@ -92,8 +92,8 @@ impl<AlphabetType: Alphabet, GenomeSequenceStore: SequenceStore<AlphabetType>, D
     }
 
     fn sequence_owned<
-        ResultSequence: for<'a> OwnedGenomeSequence<'a, AlphabetType, ResultSubsequence>,
-        ResultSubsequence: for<'a> GenomeSequence<'a, AlphabetType, ResultSubsequence> + ?Sized,
+        ResultSequence: OwnedGenomeSequence<AlphabetType, ResultSubsequence>,
+        ResultSubsequence: GenomeSequence<AlphabetType, ResultSubsequence> + ?Sized,
     >(
         &self,
         source_sequence_store: &GenomeSequenceStore,
@@ -145,7 +145,7 @@ pub fn read_gfa_as_bigraph_from_file<
     P: AsRef<Path>,
     AlphabetType: Alphabet,
     GenomeSequenceStoreHandle: Clone,
-    GenomeSequenceStoreRef: for<'a> GenomeSequence<'a, AlphabetType, GenomeSequenceStoreRef> + Debug + ?Sized,
+    GenomeSequenceStoreRef: GenomeSequence<AlphabetType, GenomeSequenceStoreRef> + Debug + ?Sized,
     GenomeSequenceStore: SequenceStore<
         AlphabetType,
         Handle = GenomeSequenceStoreHandle,
@@ -174,7 +174,7 @@ pub fn read_gfa_as_bigraph<
     R: BufRead,
     AlphabetType: Alphabet,
     GenomeSequenceStoreHandle: Clone,
-    GenomeSequenceStoreRef: for<'a> GenomeSequence<'a, AlphabetType, GenomeSequenceStoreRef> + Debug + ?Sized,
+    GenomeSequenceStoreRef: GenomeSequence<AlphabetType, GenomeSequenceStoreRef> + Debug + ?Sized,
     GenomeSequenceStore: SequenceStore<
         AlphabetType,
         Handle = GenomeSequenceStoreHandle,
@@ -314,7 +314,7 @@ pub fn read_gfa_as_edge_centric_bigraph_from_file<
     P: AsRef<Path>,
     AlphabetType: Alphabet + Clone + Eq + Hash + 'static,
     GenomeSequenceStoreHandle: Clone + Eq,
-    GenomeSequenceStoreRef: for<'a> GenomeSequence<'a, AlphabetType, GenomeSequenceStoreRef> + Debug + ?Sized,
+    GenomeSequenceStoreRef: GenomeSequence<AlphabetType, GenomeSequenceStoreRef> + Debug + ?Sized,
     GenomeSequenceStore: SequenceStore<
         AlphabetType,
         Handle = GenomeSequenceStoreHandle,
@@ -342,8 +342,8 @@ pub fn read_gfa_as_edge_centric_bigraph_from_file<
 fn get_or_create_node<
     Graph: DynamicBigraph,
     AlphabetType: Alphabet,
-    G: for<'a> OwnedGenomeSequence<'a, AlphabetType, GenomeSubsequence> + Hash + Eq + Clone,
-    GenomeSubsequence: for<'a> GenomeSequence<'a, AlphabetType, GenomeSubsequence> + ?Sized,
+    G: OwnedGenomeSequence<AlphabetType, GenomeSubsequence> + Hash + Eq + Clone,
+    GenomeSubsequence: GenomeSequence<AlphabetType, GenomeSubsequence> + ?Sized,
 >(
     bigraph: &mut Graph,
     id_map: &mut HashMap<G, <Graph as GraphBase>::NodeIndex>,
@@ -379,7 +379,7 @@ pub fn read_gfa_as_edge_centric_bigraph<
     R: BufRead,
     AlphabetType: Alphabet + Clone + Eq + Hash + 'static,
     GenomeSequenceStoreHandle: Clone + Eq,
-    GenomeSequenceStoreRef: for<'a> GenomeSequence<'a, AlphabetType, GenomeSequenceStoreRef> + Debug + ?Sized,
+    GenomeSequenceStoreRef: GenomeSequence<AlphabetType, GenomeSequenceStoreRef> + Debug + ?Sized,
     GenomeSequenceStore: SequenceStore<
         AlphabetType,
         Handle = GenomeSequenceStoreHandle,

@@ -31,8 +31,8 @@ pub trait SequenceData<AlphabetType: Alphabet, GenomeSequenceStore: SequenceStor
 
     /// Returns an owned copy of the sequence pointed to by the handle of this type.
     fn sequence_owned<
-        ResultSequence: for<'a> OwnedGenomeSequence<'a, AlphabetType, ResultSubsequence>,
-        ResultSubsequence: for<'a> GenomeSequence<'a, AlphabetType, ResultSubsequence> + ?Sized,
+        ResultSequence: OwnedGenomeSequence<AlphabetType, ResultSubsequence>,
+        ResultSubsequence: GenomeSequence<AlphabetType, ResultSubsequence> + ?Sized,
     >(
         &self,
         source_sequence_store: &GenomeSequenceStore,
@@ -59,8 +59,8 @@ impl<AlphabetType: Alphabet + 'static>
     }
 
     fn sequence_owned<
-        ResultSequence: for<'a> OwnedGenomeSequence<'a, AlphabetType, ResultSubsequence>,
-        ResultSubsequence: for<'a> GenomeSequence<'a, AlphabetType, ResultSubsequence> + ?Sized,
+        ResultSequence: OwnedGenomeSequence<AlphabetType, ResultSubsequence>,
+        ResultSubsequence: GenomeSequence<AlphabetType, ResultSubsequence> + ?Sized,
     >(
         &self,
         source_sequence_store: &BitVectorSequenceStore<AlphabetType>,
@@ -87,8 +87,8 @@ impl<AlphabetType: Alphabet + 'static> SequenceData<AlphabetType, VectorSequence
     }
 
     fn sequence_owned<
-        ResultSequence: for<'a> OwnedGenomeSequence<'a, AlphabetType, ResultSubsequence>,
-        ResultSubsequence: for<'a> GenomeSequence<'a, AlphabetType, ResultSubsequence> + ?Sized,
+        ResultSequence: OwnedGenomeSequence<AlphabetType, ResultSubsequence>,
+        ResultSubsequence: GenomeSequence<AlphabetType, ResultSubsequence> + ?Sized,
     >(
         &self,
         source_sequence_store: &VectorSequenceStore<AlphabetType>,

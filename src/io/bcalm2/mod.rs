@@ -175,8 +175,8 @@ impl<AlphabetType: Alphabet, GenomeSequenceStore: SequenceStore<AlphabetType>>
     }
 
     fn sequence_owned<
-        ResultSequence: for<'a> OwnedGenomeSequence<'a, AlphabetType, ResultSubsequence>,
-        ResultSubsequence: for<'a> GenomeSequence<'a, AlphabetType, ResultSubsequence> + ?Sized,
+        ResultSequence: OwnedGenomeSequence<AlphabetType, ResultSubsequence>,
+        ResultSubsequence: GenomeSequence<AlphabetType, ResultSubsequence> + ?Sized,
     >(
         &self,
         source_sequence_store: &GenomeSequenceStore,
@@ -467,7 +467,7 @@ pub fn write_node_centric_bigraph_to_bcalm2_to_file<
     path: P,
 ) -> crate::error::Result<()>
 where
-    for<'a> PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a NodeData>,
+    PlainBCalm2NodeData<GenomeSequenceStore::Handle>: for<'a> From<&'a NodeData>,
 {
     write_node_centric_bigraph_to_bcalm2(
         graph,
@@ -490,7 +490,7 @@ pub fn write_node_centric_bigraph_to_bcalm2<
     mut writer: bio::io::fasta::Writer<W>,
 ) -> crate::error::Result<()>
 where
-    for<'a> PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a NodeData>,
+    PlainBCalm2NodeData<GenomeSequenceStore::Handle>: for<'a> From<&'a NodeData>,
 {
     let mut output_nodes = vec![false; graph.node_count()];
 
@@ -603,8 +603,8 @@ where
 fn get_or_create_node<
     Graph: DynamicBigraph,
     AlphabetType: Alphabet,
-    Genome: for<'a> OwnedGenomeSequence<'a, AlphabetType, GenomeSubsequence> + Hash + Eq + Clone,
-    GenomeSubsequence: for<'a> GenomeSequence<'a, AlphabetType, GenomeSubsequence> + ?Sized,
+    Genome: OwnedGenomeSequence<AlphabetType, GenomeSubsequence> + Hash + Eq + Clone,
+    GenomeSubsequence: GenomeSequence<AlphabetType, GenomeSubsequence> + ?Sized,
 >(
     bigraph: &mut Graph,
     id_map: &mut HashMap<Genome, <Graph as GraphBase>::NodeIndex>,
@@ -909,7 +909,7 @@ pub fn write_edge_centric_bigraph_to_bcalm2_to_file<
     path: P,
 ) -> crate::error::Result<()>
 where
-    for<'a> PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a EdgeData>,
+    PlainBCalm2NodeData<GenomeSequenceStore::Handle>: for<'a> From<&'a EdgeData>,
 {
     write_edge_centric_bigraph_to_bcalm2(graph, source_sequence_store, File::create(path)?)
 }
@@ -928,7 +928,7 @@ pub fn write_edge_centric_bigraph_to_bcalm2<
     writer: W,
 ) -> crate::error::Result<()>
 where
-    for<'a> PlainBCalm2NodeData<GenomeSequenceStore::Handle>: From<&'a EdgeData>,
+    PlainBCalm2NodeData<GenomeSequenceStore::Handle>: for<'a> From<&'a EdgeData>,
 {
     let mut writer = bio::io::fasta::Writer::new(writer);
     let mut output_edges = vec![false; graph.edge_count()];

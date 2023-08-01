@@ -184,8 +184,8 @@ pub fn write_dot_contigs_as_wtdbg2_node_ids_to_file<
     NodeData: DotNodeData,
     EdgeData,
     Graph: StaticGraph<NodeData = NodeData, EdgeData = EdgeData>,
-    Walk: 'ws + for<'w> EdgeWalk<'w, Graph, Subwalk>,
-    Subwalk: for<'w> EdgeWalk<'w, Graph, Subwalk> + ?Sized,
+    Walk: 'ws + EdgeWalk<Graph, Subwalk>,
+    Subwalk: EdgeWalk<Graph, Subwalk> + ?Sized,
     WalkSource: 'ws + IntoIterator<Item = &'ws Walk>,
 >(
     graph: &Graph,
@@ -207,8 +207,8 @@ pub fn write_dot_contigs_as_wtdbg2_node_ids<
     NodeData: DotNodeData,
     EdgeData,
     Graph: StaticGraph<NodeData = NodeData, EdgeData = EdgeData>,
-    Walk: 'ws + for<'w> EdgeWalk<'w, Graph, Subwalk>,
-    Subwalk: for<'w> EdgeWalk<'w, Graph, Subwalk> + ?Sized,
+    Walk: 'ws + EdgeWalk<Graph, Subwalk>,
+    Subwalk: EdgeWalk<Graph, Subwalk> + ?Sized,
     WalkSource: 'ws + IntoIterator<Item = &'ws Walk>,
 >(
     graph: &Graph,
