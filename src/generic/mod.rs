@@ -40,14 +40,7 @@ impl<Graph: GraphBase> std::fmt::Debug for MappedNode<Graph> {
 
 impl<Graph: GraphBase> Clone for MappedNode<Graph> {
     fn clone(&self) -> Self {
-        match self {
-            MappedNode::Unmapped => MappedNode::Unmapped,
-            MappedNode::Normal { forward, backward } => MappedNode::Normal {
-                forward: *forward,
-                backward: *backward,
-            },
-            MappedNode::SelfMirror(node) => MappedNode::SelfMirror(*node),
-        }
+        *self
     }
 }
 
