@@ -14,7 +14,7 @@ use std::fs::File;
 use std::hash::Hash;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-#[cfg(traitgraph_algo)]
+#[cfg(feature = "traitgraph-algo")]
 use traitgraph_algo::dijkstra::DijkstraWeightedEdgeData;
 
 /// Type of graphs read from gfa files.
@@ -58,7 +58,7 @@ impl<SequenceHandle: Clone, Data: BidirectedData> BidirectedData
     }
 }
 
-#[cfg(traitgraph_algo)]
+#[cfg(feature = "traitgraph-algo")]
 impl<SequenceHandle, Data: DijkstraWeightedEdgeData<usize>> DijkstraWeightedEdgeData<usize>
     for BidirectedGfaNodeData<SequenceHandle, Data>
 {
@@ -190,7 +190,7 @@ pub fn read_gfa_as_bigraph<
     allow_messy_edges: bool,
 ) -> Result<(Graph, GfaReadFileProperties)> {
     let mut graph = Graph::default();
-    let mut k = usize::max_value();
+    let mut k = usize::MAX;
     let mut header = None;
     let mut node_name_map = HashMap::new();
 
@@ -202,7 +202,7 @@ pub fn read_gfa_as_bigraph<
             header = Some(line.to_owned());
             for column in line.split('\t') {
                 if let Some(stripped) = column.strip_prefix("KL:Z:") {
-                    debug_assert_eq!(k, usize::max_value());
+                    debug_assert_eq!(k, usize::MAX);
                     k = stripped.parse().unwrap();
                 }
             }
@@ -211,7 +211,7 @@ pub fn read_gfa_as_bigraph<
                 debug_assert_eq!(graph.edge_count(), 0);
             }
             if !ignore_k {
-                debug_assert_ne!(k, usize::max_value());
+                debug_assert_ne!(k, usize::MAX);
             }
 
             let mut columns = line.split('\t').skip(1);
@@ -253,7 +253,7 @@ pub fn read_gfa_as_bigraph<
             node_name_map.insert(node_name.to_owned(), n1);
         } else if line.starts_with('L') {
             if !ignore_k {
-                debug_assert_ne!(k, usize::max_value());
+                debug_assert_ne!(k, usize::MAX);
             }
 
             let mut columns = line.split('\t').skip(1);
@@ -401,7 +401,7 @@ pub fn read_gfa_as_edge_centric_bigraph<
 
     let mut bigraph = Graph::default();
     let mut id_map = HashMap::new();
-    let mut k = usize::max_value();
+    let mut k = usize::MAX;
     let mut header = None;
 
     for line in gfa.lines() {
@@ -412,12 +412,12 @@ pub fn read_gfa_as_edge_centric_bigraph<
             header = Some(line.clone());
             for column in line.split('\t') {
                 if let Some(stripped) = column.strip_prefix("KL:Z:") {
-                    debug_assert_eq!(k, usize::max_value());
+                    debug_assert_eq!(k, usize::MAX);
                     k = stripped.parse().unwrap();
                 }
             }
         } else if line.starts_with('S') {
-            debug_assert_ne!(k, usize::max_value());
+            debug_assert_ne!(k, usize::MAX);
 
             let mut columns = line.split('\t').skip(1);
             let node_index: usize = columns.next().unwrap().parse().unwrap();
@@ -465,7 +465,7 @@ pub fn read_gfa_as_edge_centric_bigraph<
             bigraph.add_edge(pre_plus, succ_plus, edge_data);
             bigraph.add_edge(pre_minus, succ_minus, reverse_edge_data);
         } else if line.starts_with('L') {
-            debug_assert_ne!(k, usize::max_value());
+            debug_assert_ne!(k, usize::MAX);
 
             // Since we are using a hashtable to find the nodes, we can ignore the edges.
         }

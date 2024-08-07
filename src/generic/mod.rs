@@ -40,14 +40,7 @@ impl<Graph: GraphBase> std::fmt::Debug for MappedNode<Graph> {
 
 impl<Graph: GraphBase> Clone for MappedNode<Graph> {
     fn clone(&self) -> Self {
-        match self {
-            MappedNode::Unmapped => MappedNode::Unmapped,
-            MappedNode::Normal { forward, backward } => MappedNode::Normal {
-                forward: *forward,
-                backward: *backward,
-            },
-            MappedNode::SelfMirror(node) => MappedNode::SelfMirror(*node),
-        }
+        *self
     }
 }
 
@@ -77,9 +70,6 @@ impl<Graph: GraphBase> Eq for MappedNode<Graph> {}
 
 /// A node representing a unitig with the edges of a bidirected de Bruijn graph, inspired by bcalm2's fasta format.
 pub trait GenericNode {
-    /// The iterator used to iterate over this node's edges.
-    type EdgeIterator: Iterator<Item = GenericEdge>;
-
     /// A unique identifier of this node.
     /// The identifiers of the nodes need to be numbered consecutively starting from 0.
     fn id(&self) -> usize;
@@ -89,7 +79,7 @@ pub trait GenericNode {
 
     /// Return an iterator over the edges of the node.
     /// It is enough to return the edges that also bcalm2 would return.
-    fn edges(&self) -> Self::EdgeIterator;
+    fn edges(&self) -> impl Iterator<Item = GenericEdge>;
 }
 
 /// An edge representing a k-1 overlap between unitigs.
