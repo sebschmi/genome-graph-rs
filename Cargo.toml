@@ -11,14 +11,14 @@ documentation = "https://docs.rs/genome-graph"
 repository = "https://github.com/sebschmi/genome-graph"
 readme = "README.md"
 license = "BSD-2-Clause"
-rust-version = "1.75.0"
+rust-version = "1.80.1"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 bigraph = "5.0.0"
-compact-genome = "2.0.0"
-traitgraph-algo = {version = "8.0.0", optional = true}
+compact-genome = "9.1.0"
+traitgraph-algo = { version = "8.0.0", optional = true }
 num-traits = "0.2.14"
 bio = "1.3.1"
 error-chain = "0.12.4"

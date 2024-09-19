@@ -159,10 +159,10 @@ impl<AlphabetType: Alphabet, GenomeSequenceStore: SequenceStore<AlphabetType>>
         &self.sequence_handle
     }
 
-    fn sequence_ref<'a>(
-        &self,
-        source_sequence_store: &'a GenomeSequenceStore,
-    ) -> Option<&'a <GenomeSequenceStore as SequenceStore<AlphabetType>>::SequenceRef> {
+    fn sequence_ref<'this: 'result, 'store: 'result, 'result>(
+        &'this self,
+        source_sequence_store: &'store GenomeSequenceStore,
+    ) -> Option<&'result <GenomeSequenceStore as SequenceStore<AlphabetType>>::SequenceRef> {
         if self.forwards {
             let handle = <PlainBCalm2NodeData<GenomeSequenceStore::Handle> as SequenceData<
                 AlphabetType,
@@ -1038,8 +1038,9 @@ mod tests {
     use crate::types::{PetBCalm2EdgeGraph, PetBCalm2NodeGraph};
     use bigraph::interface::static_bigraph::StaticBigraph;
     use bigraph::traitgraph::interface::{Edge, ImmutableGraphContainer};
-    use compact_genome::implementation::DefaultSequenceStore;
-    use compact_genome::interface::alphabet::dna_alphabet::DnaAlphabet;
+    use compact_genome::implementation::{
+        alphabets::dna_alphabet::DnaAlphabet, DefaultSequenceStore,
+    };
     use std::io::BufReader;
 
     #[test]

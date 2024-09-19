@@ -4,8 +4,7 @@ use bigraph::interface::BidirectedData;
 use bigraph::traitgraph::interface::{Edge, ImmutableGraphContainer, StaticGraph};
 use bigraph::traitgraph::traitsequence::interface::Sequence;
 use bigraph::traitgraph::walks::{EdgeWalk, VecNodeWalk};
-use compact_genome::implementation::DefaultGenome;
-use compact_genome::interface::alphabet::dna_alphabet::DnaAlphabet;
+use compact_genome::implementation::{alphabets::dna_alphabet::DnaAlphabet, DefaultGenome};
 use compact_genome::interface::sequence::GenomeSequence;
 use compact_genome::interface::sequence::{EditableGenomeSequence, OwnedGenomeSequence};
 use regex::Regex;
@@ -219,7 +218,9 @@ pub struct Wtdbg2EdgeReadAssociation {
 }
 
 /// Functionalities of the wtdbg2 edge data.
-/// Since when reading from wtdbg2 into a graph the edge data is converted into the target type before the edge is complete, the target type must implement this trait to allow adding to an edge after conversion into the target type.
+/// 
+/// Since when reading from wtdbg2 into a graph the edge data is converted into the target type before the edge is complete,
+/// the target type must implement this trait to allow adding to an edge after conversion into the target type.
 pub trait Wtdbg2EdgeData {
     /// Add a new read association to existing edge data.
     fn add_edge_read_association(&mut self, read_association: Wtdbg2EdgeReadAssociation);

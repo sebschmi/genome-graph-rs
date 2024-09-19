@@ -265,6 +265,7 @@ pub fn write_node_centric_walks_with_variable_overlaps_as_fasta<
 }
 
 /// Write a sequence of node-centric walks in a graph as fasta records to a file.
+/// 
 /// The overlaps between the nodes are given by the edges.
 /// The given file is created if it does not exist or truncated if it does exist.
 pub fn write_node_centric_walks_with_variable_overlaps_as_fasta_file<

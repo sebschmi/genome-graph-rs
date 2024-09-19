@@ -75,10 +75,10 @@ impl<AlphabetType: Alphabet, GenomeSequenceStore: SequenceStore<AlphabetType>, D
         &self.sequence_handle
     }
 
-    fn sequence_ref<'a>(
-        &self,
-        source_sequence_store: &'a GenomeSequenceStore,
-    ) -> Option<&'a <GenomeSequenceStore as SequenceStore<AlphabetType>>::SequenceRef> {
+    fn sequence_ref<'this: 'result, 'store: 'result, 'result>(
+        &'this self,
+        source_sequence_store: &'store GenomeSequenceStore,
+    ) -> Option<&'result <GenomeSequenceStore as SequenceStore<AlphabetType>>::SequenceRef> {
         if self.forward {
             let handle =
                 <BidirectedGfaNodeData<GenomeSequenceStore::Handle, Data> as SequenceData<
@@ -483,8 +483,9 @@ mod tests {
     use crate::io::gfa::{
         read_gfa_as_edge_centric_bigraph, GfaReadFileProperties, PetGfaEdgeGraph,
     };
-    use compact_genome::implementation::DefaultSequenceStore;
-    use compact_genome::interface::alphabet::dna_alphabet::DnaAlphabet;
+    use compact_genome::implementation::{
+        alphabets::dna_alphabet::DnaAlphabet, DefaultSequenceStore,
+    };
     use std::io::BufReader;
 
     #[test]

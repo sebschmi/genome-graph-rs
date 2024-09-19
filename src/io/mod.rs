@@ -24,10 +24,10 @@ pub trait SequenceData<AlphabetType: Alphabet, GenomeSequenceStore: SequenceStor
 
     /// Returns a reference to the sequence pointed to by the handle of this type.
     /// If this type has a sequence that is not stored anywhere (e.g. a reverse complement), it returns `None`.
-    fn sequence_ref<'a>(
-        &self,
-        source_sequence_store: &'a GenomeSequenceStore,
-    ) -> Option<&'a GenomeSequenceStore::SequenceRef>;
+    fn sequence_ref<'this: 'result, 'store: 'result, 'result>(
+        &'this self,
+        source_sequence_store: &'store GenomeSequenceStore,
+    ) -> Option<&'result GenomeSequenceStore::SequenceRef>;
 
     /// Returns an owned copy of the sequence pointed to by the handle of this type.
     fn sequence_owned<
@@ -49,11 +49,11 @@ impl<AlphabetType: Alphabet + 'static>
         self
     }
 
-    fn sequence_ref<'a>(
-        &self,
-        source_sequence_store: &'a BitVectorSequenceStore<AlphabetType>,
+    fn sequence_ref<'this: 'result, 'store: 'result, 'result>(
+        &'this self,
+        source_sequence_store: &'store BitVectorSequenceStore<AlphabetType>,
     ) -> Option<
-        &'a <BitVectorSequenceStore<AlphabetType> as SequenceStore<AlphabetType>>::SequenceRef,
+        &'result <BitVectorSequenceStore<AlphabetType> as SequenceStore<AlphabetType>>::SequenceRef,
     > {
         Some(source_sequence_store.get(self))
     }
@@ -78,11 +78,12 @@ impl<AlphabetType: Alphabet + 'static> SequenceData<AlphabetType, VectorSequence
         self
     }
 
-    fn sequence_ref<'a>(
-        &self,
-        source_sequence_store: &'a VectorSequenceStore<AlphabetType>,
-    ) -> Option<&'a <VectorSequenceStore<AlphabetType> as SequenceStore<AlphabetType>>::SequenceRef>
-    {
+    fn sequence_ref<'this: 'result, 'store: 'result, 'result>(
+        &'this self,
+        source_sequence_store: &'store VectorSequenceStore<AlphabetType>,
+    ) -> Option<
+        &'result <VectorSequenceStore<AlphabetType> as SequenceStore<AlphabetType>>::SequenceRef,
+    > {
         Some(source_sequence_store.get(self))
     }
 
