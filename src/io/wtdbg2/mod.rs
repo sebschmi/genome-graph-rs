@@ -218,7 +218,7 @@ pub struct Wtdbg2EdgeReadAssociation {
 }
 
 /// Functionalities of the wtdbg2 edge data.
-/// 
+///
 /// Since when reading from wtdbg2 into a graph the edge data is converted into the target type before the edge is complete,
 /// the target type must implement this trait to allow adding to an edge after conversion into the target type.
 pub trait Wtdbg2EdgeData {
