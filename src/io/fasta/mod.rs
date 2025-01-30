@@ -1,3 +1,4 @@
+use crate::error::Result;
 use crate::io::gfa::BidirectedGfaEdgeData;
 use crate::io::SequenceData;
 use bigraph::interface::dynamic_bigraph::{DynamicBigraph, DynamicEdgeCentricBigraph};
@@ -14,6 +15,7 @@ use compact_genome::interface::sequence::{
     EditableGenomeSequence, GenomeSequence, OwnedGenomeSequence,
 };
 use compact_genome::interface::sequence_store::SequenceStore;
+use error::FastaIoError;
 use std::collections::HashMap;
 use std::fmt::{Debug, Write};
 use std::fs::File;
@@ -21,34 +23,7 @@ use std::hash::Hash;
 use std::io::BufReader;
 use std::path::Path;
 
-error_chain! {
-    foreign_links {
-        // For some weird reasons I don't understand, the doc comments have to be put after the item in this macro...
-        Io(std::io::Error)
-        /// An IO error.
-        ;
-        Fmt(std::fmt::Error)
-        /// An error encountered while trying to format a structure as string.
-        ;
-        Anyhow(anyhow::Error)
-        /// An error passed through anyhow.
-        ;
-    }
-
-    errors {
-        /// A walk is empty.
-        EmptyWalkError {
-            description("walk is empty")
-            display("walk is empty")
-        }
-
-        /// An edge has no mirror.
-        EdgeWithoutMirror {
-            description("an edge has no mirror")
-            display("an edge has no mirror")
-        }
-    }
-}
+pub mod error;
 
 /// Data that can be output as fasta record.
 pub trait FastaData<AlphabetType: Alphabet, SourceSequenceStore: SequenceStore<AlphabetType>> {
@@ -85,7 +60,7 @@ pub fn write_walks_as_fasta<
 ) -> crate::error::Result<()> {
     for (i, walk) in walks.into_iter().enumerate() {
         if walk.is_empty() {
-            return Err(Error::from_kind(ErrorKind::EmptyWalkError).into());
+            return Err(FastaIoError::EmptyWalkError.into());
         }
 
         let mut sequence: DefaultGenome<AlphabetType> = graph
@@ -106,7 +81,7 @@ pub fn write_walks_as_fasta<
 
         let record =
             bio::io::fasta::Record::with_attrs(&format!("{}", i), None, &sequence.clone_as_vec());
-        writer.write_record(&record).map_err(Error::from)?;
+        writer.write_record(&record).map_err(FastaIoError::from)?;
     }
 
     Ok(())
@@ -136,7 +111,7 @@ pub fn write_walks_as_fasta_file<
         source_sequence_store,
         kmer_size,
         walks,
-        &mut bio::io::fasta::Writer::to_file(path).map_err(Error::from)?,
+        &mut bio::io::fasta::Writer::to_file(path).map_err(FastaIoError::from)?,
     )
 }
 
@@ -160,7 +135,7 @@ pub fn write_node_centric_walks_as_fasta<
 ) -> crate::error::Result<()> {
     for (i, walk) in walks.into_iter().enumerate() {
         if walk.is_empty() {
-            return Err(Error::from_kind(ErrorKind::EmptyWalkError).into());
+            return Err(FastaIoError::EmptyWalkError.into());
         }
 
         let mut sequence: DefaultGenome<AlphabetType> = graph
@@ -181,7 +156,7 @@ pub fn write_node_centric_walks_as_fasta<
 
         let record =
             bio::io::fasta::Record::with_attrs(&format!("{}", i), None, &sequence.clone_as_vec());
-        writer.write_record(&record).map_err(Error::from)?;
+        writer.write_record(&record).map_err(FastaIoError::from)?;
     }
 
     Ok(())
@@ -211,7 +186,7 @@ pub fn write_node_centric_walks_as_fasta_file<
         source_sequence_store,
         kmer_size,
         walks,
-        &mut bio::io::fasta::Writer::to_file(path).map_err(Error::from)?,
+        &mut bio::io::fasta::Writer::to_file(path).map_err(FastaIoError::from)?,
     )
 }
 
@@ -235,7 +210,7 @@ pub fn write_node_centric_walks_with_variable_overlaps_as_fasta<
 ) -> crate::error::Result<()> {
     for (i, walk) in walks.into_iter().enumerate() {
         if walk.is_empty() {
-            return Err(Error::from_kind(ErrorKind::EmptyWalkError).into());
+            return Err(FastaIoError::EmptyWalkError.into());
         }
 
         let mut sequence: DefaultGenome<AlphabetType> = graph
@@ -258,7 +233,7 @@ pub fn write_node_centric_walks_with_variable_overlaps_as_fasta<
 
         let record =
             bio::io::fasta::Record::with_attrs(&format!("{}", i), None, &sequence.clone_as_vec());
-        writer.write_record(&record).map_err(Error::from)?;
+        writer.write_record(&record).map_err(FastaIoError::from)?;
     }
 
     Ok(())
@@ -288,7 +263,7 @@ pub fn write_node_centric_walks_with_variable_overlaps_as_fasta_file<
         graph,
         source_sequence_store,
         walks,
-        &mut bio::io::fasta::Writer::to_file(path).map_err(Error::from)?,
+        &mut bio::io::fasta::Writer::to_file(path).map_err(FastaIoError::from)?,
     )
 }
 
@@ -605,7 +580,7 @@ where
 
     for record in reader.records() {
         let record: FastaNodeData<GenomeSequenceStore::Handle> =
-            parse_fasta_record(record.map_err(Error::from)?, target_sequence_store)?;
+            parse_fasta_record(record.map_err(FastaIoError::from)?, target_sequence_store)?;
         let sequence = target_sequence_store.get(&record.sequence_handle);
         let prefix = sequence.prefix(node_kmer_size);
         let suffix = sequence.suffix(node_kmer_size);
@@ -648,7 +623,7 @@ where
     write_edge_centric_bigraph_to_fasta(
         graph,
         source_sequence_store,
-        bio::io::fasta::Writer::to_file(path).map_err(Error::from)?,
+        bio::io::fasta::Writer::to_file(path).map_err(FastaIoError::from)?,
     )
 }
 
@@ -673,7 +648,7 @@ where
     for edge_id in graph.edge_indices() {
         if !output_edges[graph
             .mirror_edge_edge_centric(edge_id)
-            .ok_or_else(|| Error::from(ErrorKind::EdgeWithoutMirror))?
+            .ok_or_else(|| FastaIoError::EdgeWithoutMirror)?
             .as_usize()]
         {
             output_edges[edge_id.as_usize()] = true;
@@ -685,7 +660,7 @@ where
             let node_data = FastaNodeData::from(graph.edge_data(edge_id));
 
             let mut printed_node_id = String::new();
-            write!(printed_node_id, "{}", node_data.id).map_err(Error::from)?;
+            write!(printed_node_id, "{}", node_data.id).map_err(FastaIoError::from)?;
             let node_sequence = source_sequence_store
                 .get(&node_data.sequence_handle)
                 .clone_as_vec();
@@ -696,7 +671,7 @@ where
                     node_data.description.as_deref(),
                     &node_sequence,
                 )
-                .map_err(Error::from)?;
+                .map_err(FastaIoError::from)?;
         }
     }
 

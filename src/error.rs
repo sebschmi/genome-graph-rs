@@ -1,41 +1,27 @@
-error_chain! {
-    foreign_links {
-        // For some weird reasons I don't understand, the doc comments have to be put after the item in this macro...
-        Io(std::io::Error)
-        /// An IO error.
-        ;
-        Anyhow(anyhow::Error)
-        /// Any error passed through anyhow.
-        ;
-    }
+use thiserror::Error;
 
-    links {
-        // For some weird reasons I don't understand, the doc comments have to be put after the item in this macro...
-        BCalm2IoError(crate::io::bcalm2::Error, crate::io::bcalm2::ErrorKind)
-        /// A wrapper for errors thrown by bcalm2 IO.
-        ;
-        FastaIoError(crate::io::fasta::Error, crate::io::fasta::ErrorKind)
-        /// A wrapper for errors thrown by fasta IO.
-        ;
-    }
+pub type Result<T> = std::result::Result<T, Error>;
 
-    errors {
-        #[allow(missing_docs)]
-        GfaUnknownOverlapPattern {
-            description("an L-line was encountered, but the overlap pattern is unknown")
-            display("an L-line was encountered, but the overlap pattern is unknown")
-        }
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
 
-        #[allow(missing_docs)]
-        GfaMissingOverlapPattern {
-            description("an L-line was encountered, but the overlap pattern is missing")
-            display("an L-line was encountered, but the overlap pattern is missing")
-        }
+    #[error("{0}")]
+    Anyhow(#[from] anyhow::Error),
 
-        #[allow(missing_docs)]
-        GfaMissingNode {
-            description("an L-line was encountered, at least one of the nodes is missing")
-            display("an L-line was encountered, at least one of the nodes is missing")
-        }
-    }
+    #[error("bcalm2 io error: {0}")]
+    BCalm2IoError(#[from] crate::io::bcalm2::error::BCalm2IoError),
+
+    #[error("fasta io error: {0}")]
+    FastaIoError(#[from] crate::io::fasta::error::FastaIoError),
+
+    #[error("wtdbg2 io error: {0}")]
+    Wtdbg2IoError(#[from] crate::io::wtdbg2::error::Wtdbg2IoError),
+
+    #[error("dot io error: {0}")]
+    DotIoError(#[from] crate::io::wtdbg2::dot::error::DotIoError),
+
+    #[error("gfa io error: {0}")]
+    GfaIoError(#[from] crate::io::gfa::error::GfaIoError),
 }

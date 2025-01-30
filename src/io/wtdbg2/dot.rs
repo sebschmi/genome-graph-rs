@@ -3,12 +3,15 @@ use crate::bigraph::traitgraph::traitsequence::interface::Sequence;
 use crate::error::Result;
 use bigraph::traitgraph::interface::StaticGraph;
 use bigraph::traitgraph::walks::{EdgeWalk, VecNodeWalk};
+use error::DotIoError;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::str::FromStr;
+
+pub mod error;
 
 /// Node data of a dot graph node.
 pub trait DotNodeData {
@@ -71,25 +74,25 @@ where
         while !line.is_empty() {
             match state {
                 State::KwDigraph => {
-                    ensure!(line.starts_with("digraph"), "Unexpected token");
+                    DotIoError::expect_line_start(line, "digraph")?;
                     line = line[7..].trim();
                     state = State::OpenBrace;
                 }
                 State::OpenBrace => {
-                    ensure!(line.starts_with('{'), "Unexpected token");
+                    DotIoError::expect_line_start(line, "{")?;
                     line = line[1..].trim();
                     state = State::KwNode;
                 }
                 State::KwNode => {
-                    ensure!(line.starts_with("node"), "Unexpected token");
+                    DotIoError::expect_line_start(line, "node")?;
                     line = line[4..].trim();
                     state = State::KwShapeRecord;
                 }
                 State::KwShapeRecord => {
                     const SHAPE_RECORD: &str = "[shape=record]";
-                    ensure!(line.starts_with(SHAPE_RECORD), "Unexpected token");
+                    DotIoError::expect_line_start(line, SHAPE_RECORD)?;
                     line = line[SHAPE_RECORD.len()..].trim();
-                    ensure!(line.is_empty(), "Line not empty before node list starts.");
+                    DotIoError::expect_empty_line(line)?;
                     state = State::Nodes;
                 }
                 State::Nodes => {
@@ -110,18 +113,25 @@ where
                         graph.add_node(FromStr::from_str(&backward_node_name).unwrap());
                     graph.set_mirror_nodes(forward_node_id, backward_node_id);
 
-                    ensure!(
-                        node_id_map
-                            .insert(forward_node_name, forward_node_id)
-                            .is_none(),
-                        "Duplicate node id"
-                    );
-                    ensure!(
-                        node_id_map
-                            .insert(backward_node_name, backward_node_id)
-                            .is_none(),
-                        "Duplicate node id"
-                    );
+                    if node_id_map
+                        .insert(forward_node_name.clone(), forward_node_id)
+                        .is_some()
+                    {
+                        return Err(DotIoError::DuplicateNodeId {
+                            name: forward_node_name,
+                        }
+                        .into());
+                    }
+                    if node_id_map
+                        .insert(backward_node_name.clone(), backward_node_id)
+                        .is_some()
+                    {
+                        return Err(DotIoError::DuplicateNodeId {
+                            name: backward_node_name,
+                        }
+                        .into());
+                    }
+
                     line = "";
                 }
                 State::Edges => {
@@ -136,16 +146,13 @@ where
                     }
 
                     let arrow = tokens.next().expect("Missing arrow token in edge.");
-                    ensure!(arrow == "->", "Missing arrow token in edge.");
+                    DotIoError::expect_token(arrow, "->")?;
                     let mut to_node_name =
                         tokens.next().expect("Missing to node in edge.").to_string();
 
                     let direction_label = tokens.next().expect("Missing direction label in edge.");
                     const DIRECTION_LABEL_PREFIX: &str = "[label=\"";
-                    ensure!(
-                        direction_label.starts_with(DIRECTION_LABEL_PREFIX),
-                        "Wrong direction label in edge."
-                    );
+                    DotIoError::expect_line_start(direction_label, DIRECTION_LABEL_PREFIX)?;
                     let direction_label = &direction_label[DIRECTION_LABEL_PREFIX.len()..][..2];
                     from_node_name += " ";
                     from_node_name += &direction_label[0..1];
@@ -162,12 +169,16 @@ where
                     line = "";
                 }
                 State::CloseBrace => {
-                    ensure!(line.starts_with('}'), "Unexpected token");
+                    DotIoError::expect_line_start(line, "}")?;
                     line = line[1..].trim();
                     state = State::Ok;
                 }
                 State::Ok => {
-                    bail!("Unexpected token");
+                    return Err(DotIoError::UnexpectedToken {
+                        expected: "".to_string(),
+                        actual: line.to_string(),
+                    }
+                    .into());
                 }
             }
         }

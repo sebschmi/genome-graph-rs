@@ -1,4 +1,4 @@
-use crate::error::{Error, ErrorKind, Result};
+use crate::error::Result;
 use crate::io::SequenceData;
 use bigraph::interface::dynamic_bigraph::{DynamicBigraph, DynamicEdgeCentricBigraph};
 use bigraph::interface::BidirectedData;
@@ -8,6 +8,7 @@ use compact_genome::implementation::DefaultGenome;
 use compact_genome::interface::alphabet::Alphabet;
 use compact_genome::interface::sequence::{GenomeSequence, OwnedGenomeSequence};
 use compact_genome::interface::sequence_store::SequenceStore;
+use error::GfaIoError;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs::File;
@@ -16,6 +17,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 #[cfg(feature = "traitgraph-algo")]
 use traitgraph_algo::dijkstra::DijkstraWeightedEdgeData;
+
+pub mod error;
 
 /// Type of graphs read from gfa files.
 pub type PetGfaGraph<NodeData, EdgeData, SequenceHandle> =
@@ -265,12 +268,17 @@ pub fn read_gfa_as_bigraph<
                 if let Some(overlap) = overlap.strip_suffix('M') {
                     overlap
                         .parse()
-                        .map_err(|_| Error::from_kind(ErrorKind::GfaUnknownOverlapPattern))?
+                        .map_err(|_| GfaIoError::UnknownOverlapPattern {
+                            pattern: overlap.to_string(),
+                        })?
                 } else {
-                    return Err(ErrorKind::GfaUnknownOverlapPattern.into());
+                    return Err(GfaIoError::UnknownOverlapPattern {
+                        pattern: overlap.to_string(),
+                    }
+                    .into());
                 }
             } else {
-                return Err(ErrorKind::GfaMissingOverlapPattern.into());
+                return Err(GfaIoError::MissingOverlapPattern.into());
             };
 
             if let (Some(n1), Some(n2)) = (node_name_map.get(n1_name), node_name_map.get(n2_name)) {
@@ -296,7 +304,7 @@ pub fn read_gfa_as_bigraph<
                     );
                 }
             } else {
-                return Err(ErrorKind::GfaMissingNode.into());
+                return Err(GfaIoError::MissingNode.into());
             }
         }
     }

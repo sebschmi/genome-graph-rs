@@ -16,13 +16,13 @@ rust-version = "1.80.1"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bigraph = "5.0.0"
-compact-genome = "9.1.0"
-traitgraph-algo = { version = "8.1.0", optional = true }
+bigraph = "5.0.1"
+compact-genome = "12.0.1"
+traitgraph-algo = { version = "8.1.2", optional = true }
 num-traits = "0.2.19"
 bio = "2.0.3"
-error-chain = "0.12.4"
 log = "0.4.22"
 regex = "1.10.6"
 anyhow = "1.0.89"
 disjoint-sets = "0.4.2"
+thiserror = "2.0.11"

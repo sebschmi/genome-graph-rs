@@ -11,6 +11,7 @@ use compact_genome::implementation::bit_vec_sequence::BitVectorGenome;
 use compact_genome::interface::alphabet::Alphabet;
 use compact_genome::interface::sequence::{GenomeSequence, OwnedGenomeSequence};
 use compact_genome::interface::sequence_store::SequenceStore;
+use error::BCalm2IoError;
 use num_traits::NumCast;
 use std::collections::HashMap;
 use std::fmt::{Debug, Write};
@@ -19,76 +20,7 @@ use std::hash::Hash;
 use std::io::BufReader;
 use std::path::Path;
 
-error_chain! {
-    foreign_links {
-        // For some weird reasons I don't understand, the doc comments have to be put after the item in this macro...
-        Io(std::io::Error)
-        /// An IO error.
-        ;
-        Fmt(std::fmt::Error)
-        /// An error encountered while trying to format a structure as string.
-        ;
-        Anyhow(anyhow::Error)
-        /// Any error passed through anyhow.
-        ;
-    }
-
-    errors {
-        /// A node id that cannot be parsed into `usize`.
-        BCalm2IdError(id: String) {
-            description("invalid node id")
-            display("invalid node id: '{:?}'", id)
-        }
-
-        /// The length of a sequence does not match the length given as fasta parameter.
-        BCalm2LengthError(length: usize, sequence_length: usize) {
-            description("the length in the description of a node does not match the length of its sequence")
-            display("the length in the description of a node ({}) does not match the length of its sequence {}", length, sequence_length)
-        }
-
-        /// The fasta comment contains an unknown parameter.
-        BCalm2UnknownParameterError(parameter: String) {
-            description("unknown parameter")
-            display("unknown parameter: '{:?}'", parameter)
-        }
-
-        /// The fasta comment contains a duplicate parameter.
-        BCalm2DuplicateParameterError(parameter: String) {
-            description("duplicate parameter")
-            display("duplicate parameter: '{:?}'", parameter)
-        }
-
-        /// The fasta comment contains a parameter that cannot be parsed.
-        BCalm2MalformedParameterError(parameter: String) {
-            description("malformed parameter")
-            display("malformed parameter: '{:?}'", parameter)
-        }
-
-        /// The fasta comment is missing an expected parameter.
-        BCalm2MissingParameterError(parameter: String) {
-            description("missing parameter")
-            display("missing parameter: '{:?}'", parameter)
-        }
-
-        /// A node id (from the given graph type) cannot be cast into `usize`.
-        BCalm2NodeIdOutOfPrintingRange {
-            description("node id is out of range (usize) for displaying")
-            display("node id is out of range (usize) for displaying")
-        }
-
-        /// A node is not mapped to a mirror node.
-        BCalm2NodeWithoutMirror {
-            description("node has no mirror")
-            display("node has no mirror")
-        }
-
-        /// An edge is not mapped to a mirror node.
-        BCalm2EdgeWithoutMirror {
-            description("edge has no mirror")
-            display("edge has no mirror")
-        }
-    }
-}
+pub mod error;
 
 /// Node data of a bcalm2 node, containing only the data the is typically needed.
 #[derive(Debug)]
@@ -106,11 +38,11 @@ pub struct PlainBCalm2NodeData<GenomeSequenceStoreHandle> {
     /// False if the sequence handle points to the reverse complement of this nodes sequence rather than the actual sequence.
     pub forwards: bool,
     /// The length of the sequence of the bcalm2 node.
-    pub length: usize,
+    pub length: Option<usize>,
     /// The total k-mer abundance of the sequence of the bcalm2 node.
-    pub total_abundance: usize,
+    pub total_abundance: Option<usize>,
     /// The mean k-mer abundance of the sequence of the bcalm2 node.
-    pub mean_abundance: f64,
+    pub mean_abundance: Option<f64>,
     /// The edges stored at the bcalm2 node.
     pub edges: Vec<PlainBCalm2Edge>,
 }
@@ -133,9 +65,9 @@ impl<GenomeSequenceStoreHandle: Default> Default
             id: -1_isize as usize,
             sequence_handle: GenomeSequenceStoreHandle::default(),
             forwards: true,
-            length: 0,
-            total_abundance: 0,
-            mean_abundance: 0.0,
+            length: None,
+            total_abundance: None,
+            mean_abundance: None,
             edges: Vec::new(),
         }
     }
@@ -216,7 +148,9 @@ fn parse_bcalm2_fasta_record<
     let id = record
         .id()
         .parse()
-        .map_err(|e| Error::with_chain(e, ErrorKind::BCalm2IdError(record.id().to_owned())))?;
+        .map_err(|_| BCalm2IoError::BCalm2IdError {
+            id: record.id().to_owned(),
+        })?;
     let sequence_handle = target_sequence_store
         .add_from_slice_u8(record.seq())
         .unwrap_or_else(|error| panic!("Genome sequence with id {id} is invalid: {error:?}"));
@@ -228,75 +162,74 @@ fn parse_bcalm2_fasta_record<
     let mut edges = Vec::new();
 
     for parameter in record.desc().unwrap_or("").split_whitespace() {
-        ensure!(
-            parameter.len() >= 5,
-            Error::from(ErrorKind::BCalm2UnknownParameterError(parameter.to_owned()))
-        );
+        if parameter.len() < 5 {
+            return Err(BCalm2IoError::BCalm2UnknownParameterError {
+                parameter: parameter.to_string(),
+            }
+            .into());
+        }
         match &parameter[0..5] {
             "LN:i:" => {
-                ensure!(
-                    length.is_none(),
-                    Error::from(ErrorKind::BCalm2DuplicateParameterError(
-                        parameter.to_owned()
-                    ))
-                );
-                length = Some(parameter[5..].parse().map_err(|e| {
-                    Error::with_chain(
-                        e,
-                        ErrorKind::BCalm2MalformedParameterError(parameter.to_owned()),
-                    )
-                }));
+                if length.is_some() {
+                    return Err(BCalm2IoError::BCalm2DuplicateParameterError {
+                        parameter: parameter.to_string(),
+                    }
+                    .into());
+                }
+
+                length = Some(parameter[5..].parse().map_err(|_| {
+                    BCalm2IoError::BCalm2MalformedParameterError {
+                        parameter: parameter.to_string(),
+                    }
+                })?);
             }
             "KC:i:" => {
-                ensure!(
-                    total_abundance.is_none(),
-                    Error::from(ErrorKind::BCalm2DuplicateParameterError(
-                        parameter.to_owned()
-                    ))
-                );
-                total_abundance = Some(parameter[5..].parse().map_err(|e| {
-                    Error::with_chain(
-                        e,
-                        ErrorKind::BCalm2MalformedParameterError(parameter.to_owned()),
-                    )
-                }));
+                if total_abundance.is_some() {
+                    return Err(BCalm2IoError::BCalm2DuplicateParameterError {
+                        parameter: parameter.to_string(),
+                    }
+                    .into());
+                }
+                total_abundance = Some(parameter[5..].parse().map_err(|_| {
+                    BCalm2IoError::BCalm2MalformedParameterError {
+                        parameter: parameter.to_string(),
+                    }
+                })?);
             }
             "KM:f:" | "km:f:" => {
-                ensure!(
-                    mean_abundance.is_none(),
-                    Error::from(ErrorKind::BCalm2DuplicateParameterError(
-                        parameter.to_owned()
-                    ))
-                );
-                mean_abundance = Some(parameter[5..].parse().map_err(|e| {
-                    Error::with_chain(
-                        e,
-                        ErrorKind::BCalm2MalformedParameterError(parameter.to_owned()),
-                    )
-                }));
+                if mean_abundance.is_some() {
+                    return Err(BCalm2IoError::BCalm2DuplicateParameterError {
+                        parameter: parameter.to_string(),
+                    }
+                    .into());
+                }
+                mean_abundance = Some(parameter[5..].parse().map_err(|_| {
+                    BCalm2IoError::BCalm2MalformedParameterError {
+                        parameter: parameter.to_string(),
+                    }
+                })?);
             }
             _ => match &parameter[0..2] {
                 "L:" => {
                     let parts: Vec<_> = parameter.split(':').collect();
-                    ensure!(
-                        parts.len() == 4,
-                        Error::from(ErrorKind::BCalm2MalformedParameterError(
-                            parameter.to_owned()
-                        ))
-                    );
+                    if parts.len() != 4 {
+                        return Err(BCalm2IoError::BCalm2MalformedParameterError {
+                            parameter: parameter.to_string(),
+                        }
+                        .into());
+                    }
                     let forward_reverse_to_bool = |c| match c {
                         "+" => Ok(true),
                         "-" => Ok(false),
-                        _ => Err(Error::from(ErrorKind::BCalm2MalformedParameterError(
-                            parameter.to_owned(),
-                        ))),
+                        _ => Err(BCalm2IoError::BCalm2MalformedParameterError {
+                            parameter: parameter.to_owned(),
+                        }),
                     };
                     let from_side = forward_reverse_to_bool(parts[1])?;
-                    let to_node = parts[2].parse().map_err(|e| {
-                        Error::with_chain(
-                            e,
-                            ErrorKind::BCalm2MalformedParameterError(parameter.to_owned()),
-                        )
+                    let to_node = parts[2].parse().map_err(|_| {
+                        BCalm2IoError::BCalm2MalformedParameterError {
+                            parameter: parameter.to_string(),
+                        }
                     })?;
                     let to_side = forward_reverse_to_bool(parts[3])?;
                     edges.push(PlainBCalm2Edge {
@@ -305,32 +238,25 @@ fn parse_bcalm2_fasta_record<
                         to_side,
                     });
                 }
-                _ => bail!(Error::from(ErrorKind::BCalm2UnknownParameterError(
-                    parameter.to_owned()
-                ))),
+                _ => {
+                    return Err(BCalm2IoError::BCalm2UnknownParameterError {
+                        parameter: parameter.to_string(),
+                    }
+                    .into())
+                }
             },
         }
     }
 
-    let length = length.unwrap_or_else(|| {
-        bail!(Error::from(ErrorKind::BCalm2MissingParameterError(
-            "length (LN)".to_owned()
-        )))
-    })?;
-    ensure!(
-        length == sequence.len(),
-        Error::from(ErrorKind::BCalm2LengthError(length, sequence.len()))
-    );
-    let total_abundance = total_abundance.unwrap_or_else(|| {
-        bail!(Error::from(ErrorKind::BCalm2MissingParameterError(
-            "total abundance (KC)".to_owned()
-        )))
-    })?;
-    let mean_abundance = mean_abundance.unwrap_or_else(|| {
-        bail!(Error::from(ErrorKind::BCalm2MissingParameterError(
-            "mean abundance (KM)".to_owned()
-        )))
-    })?;
+    if let Some(length) = length {
+        if length != sequence.len() {
+            return Err(BCalm2IoError::BCalm2LengthError {
+                length,
+                sequence_length: sequence.len(),
+            }
+            .into());
+        }
+    }
 
     Ok(PlainBCalm2NodeData {
         id,
@@ -396,7 +322,7 @@ pub fn read_bigraph_from_bcalm2_as_node_centric<
 
     for record in reader.records() {
         let record: PlainBCalm2NodeData<GenomeSequenceStore::Handle> =
-            parse_bcalm2_fasta_record(record.map_err(Error::from)?, target_sequence_store)?;
+            parse_bcalm2_fasta_record(record.map_err(BCalm2IoError::from)?, target_sequence_store)?;
         edges.extend(record.edges.iter().map(|e| BiEdge {
             from_node: record.id,
             plain_edge: e.clone(),
@@ -433,22 +359,41 @@ fn write_plain_bcalm2_node_data_to_bcalm2<GenomeSequenceStoreHandle>(
     out_neighbors: Vec<(bool, usize, bool)>,
 ) -> crate::error::Result<String> {
     let mut result = String::new();
-    write!(
-        result,
-        "LN:i:{} KC:i:{} km:f:{:.1}",
-        node.length, node.total_abundance, node.mean_abundance
-    )
-    .map_err(Error::from)?;
+
+    if let Some(length) = node.length {
+        if !result.is_empty() {
+            write!(result, " ").map_err(BCalm2IoError::from)?;
+        }
+        write!(result, "LN:i:{length}").map_err(BCalm2IoError::from)?;
+    }
+
+    if let Some(total_abundance) = node.total_abundance {
+        if !result.is_empty() {
+            write!(result, " ").map_err(BCalm2IoError::from)?;
+        }
+        write!(result, "KC:i:{total_abundance}").map_err(BCalm2IoError::from)?;
+    }
+
+    if let Some(mean_abundance) = node.mean_abundance {
+        if !result.is_empty() {
+            write!(result, " ").map_err(BCalm2IoError::from)?;
+        }
+        write!(result, "km:f:{mean_abundance:.1}").map_err(BCalm2IoError::from)?;
+    }
+
     for (node_type, neighbor_id, neighbor_type) in out_neighbors {
+        if !result.is_empty() {
+            write!(result, " ").map_err(BCalm2IoError::from)?;
+        }
         write!(
             result,
-            " L:{}:{}:{}",
+            "L:{}:{}:{}",
             if node_type { "+" } else { "-" },
             <usize as NumCast>::from(neighbor_id)
-                .ok_or_else(|| Error::from(ErrorKind::BCalm2NodeIdOutOfPrintingRange))?,
+                .ok_or_else(|| BCalm2IoError::BCalm2NodeIdOutOfPrintingRange)?,
             if neighbor_type { "+" } else { "-" }
         )
-        .map_err(Error::from)?;
+        .map_err(BCalm2IoError::from)?;
     }
     Ok(result)
 }
@@ -472,7 +417,7 @@ where
     write_node_centric_bigraph_to_bcalm2(
         graph,
         source_sequence_store,
-        bio::io::fasta::Writer::to_file(path).map_err(Error::from)?,
+        bio::io::fasta::Writer::to_file(path).map_err(BCalm2IoError::from)?,
     )
 }
 
@@ -497,7 +442,7 @@ where
     for node_id in graph.node_indices() {
         if !output_nodes[graph
             .mirror_node(node_id)
-            .ok_or_else(|| Error::from(ErrorKind::BCalm2NodeWithoutMirror))?
+            .ok_or_else(|| BCalm2IoError::BCalm2NodeWithoutMirror)?
             .as_usize()]
         {
             output_nodes[node_id.as_usize()] = true;
@@ -509,7 +454,7 @@ where
             let node_data = PlainBCalm2NodeData::from(graph.node_data(node_id));
             let mirror_node_id = graph
                 .mirror_node(node_id)
-                .ok_or_else(|| Error::from(ErrorKind::BCalm2NodeWithoutMirror))?;
+                .ok_or_else(|| BCalm2IoError::BCalm2NodeWithoutMirror)?;
             /*let mirror_node_data = PlainBCalm2NodeData::<IndexType>::from(
                 graph
                     .node_data(mirror_node_id)
@@ -528,7 +473,7 @@ where
                     } else {
                         graph
                             .mirror_node(neighbor.node_id)
-                            .ok_or_else(|| Error::from(ErrorKind::BCalm2NodeWithoutMirror))?
+                            .ok_or_else(|| BCalm2IoError::BCalm2NodeWithoutMirror)?
                             .as_usize()
                     },
                     output_nodes[neighbor_node_id],
@@ -544,7 +489,7 @@ where
                     } else {
                         graph
                             .mirror_node(neighbor.node_id)
-                            .ok_or_else(|| Error::from(ErrorKind::BCalm2NodeWithoutMirror))?
+                            .ok_or_else(|| BCalm2IoError::BCalm2NodeWithoutMirror)?
                             .as_usize()
                     },
                     output_nodes[neighbor_node_id],
@@ -557,7 +502,7 @@ where
             let out_neighbors = out_neighbors_plus;
 
             let mut printed_node_id = String::new();
-            write!(printed_node_id, "{}", node_data.id).map_err(Error::from)?;
+            write!(printed_node_id, "{}", node_data.id).map_err(BCalm2IoError::from)?;
             let node_description =
                 write_plain_bcalm2_node_data_to_bcalm2(&node_data, out_neighbors)?;
             let node_sequence = source_sequence_store
@@ -566,7 +511,7 @@ where
 
             writer
                 .write(&printed_node_id, Some(&node_description), &node_sequence)
-                .map_err(Error::from)?;
+                .map_err(BCalm2IoError::from)?;
         }
     }
 
@@ -659,7 +604,7 @@ where
 
     for record in reader.records() {
         let record: PlainBCalm2NodeData<GenomeSequenceStore::Handle> =
-            parse_bcalm2_fasta_record(record.map_err(Error::from)?, target_sequence_store)?;
+            parse_bcalm2_fasta_record(record.map_err(BCalm2IoError::from)?, target_sequence_store)?;
         let sequence = target_sequence_store.get(&record.sequence_handle);
         let prefix = sequence.prefix(node_kmer_size);
         let suffix = sequence.suffix(node_kmer_size);
@@ -936,7 +881,7 @@ where
     for edge_id in graph.edge_indices() {
         if !output_edges[graph
             .mirror_edge_edge_centric(edge_id)
-            .ok_or_else(|| Error::from(ErrorKind::BCalm2EdgeWithoutMirror))?
+            .ok_or_else(|| BCalm2IoError::BCalm2EdgeWithoutMirror)?
             .as_usize()]
         {
             output_edges[edge_id.as_usize()] = true;
@@ -948,7 +893,7 @@ where
             let node_data = PlainBCalm2NodeData::from(graph.edge_data(edge_id));
             let mirror_edge_id = graph
                 .mirror_edge_edge_centric(edge_id)
-                .ok_or_else(|| Error::from(ErrorKind::BCalm2EdgeWithoutMirror))?;
+                .ok_or_else(|| BCalm2IoError::BCalm2EdgeWithoutMirror)?;
             let to_node_plus = graph.edge_endpoints(edge_id).to_node;
             let to_node_minus = graph.edge_endpoints(mirror_edge_id).to_node;
 
@@ -967,9 +912,7 @@ where
                             graph.edge_data(
                                 graph
                                     .mirror_edge_edge_centric(neighbor.edge_id)
-                                    .ok_or_else(|| {
-                                        Error::from(ErrorKind::BCalm2EdgeWithoutMirror)
-                                    })?,
+                                    .ok_or_else(|| BCalm2IoError::BCalm2EdgeWithoutMirror)?,
                             ),
                         )
                         .id
@@ -989,9 +932,7 @@ where
                             graph.edge_data(
                                 graph
                                     .mirror_edge_edge_centric(neighbor.edge_id)
-                                    .ok_or_else(|| {
-                                        Error::from(ErrorKind::BCalm2EdgeWithoutMirror)
-                                    })?,
+                                    .ok_or_else(|| BCalm2IoError::BCalm2EdgeWithoutMirror)?,
                             ),
                         )
                         .id
@@ -1006,7 +947,7 @@ where
             let out_neighbors = out_neighbors_plus;
 
             let mut printed_node_id = String::new();
-            write!(printed_node_id, "{}", node_data.id).map_err(Error::from)?;
+            write!(printed_node_id, "{}", node_data.id).map_err(BCalm2IoError::from)?;
             let node_description =
                 write_plain_bcalm2_node_data_to_bcalm2(&node_data, out_neighbors)?;
             let node_sequence = source_sequence_store.get(&node_data.sequence_handle);
@@ -1021,7 +962,7 @@ where
 
             writer
                 .write(&printed_node_id, Some(&node_description), &node_sequence)
-                .map_err(Error::from)?;
+                .map_err(BCalm2IoError::from)?;
         }
     }
 

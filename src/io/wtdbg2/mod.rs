@@ -7,6 +7,8 @@ use bigraph::traitgraph::walks::{EdgeWalk, VecNodeWalk};
 use compact_genome::implementation::{alphabets::dna_alphabet::DnaAlphabet, DefaultGenome};
 use compact_genome::interface::sequence::GenomeSequence;
 use compact_genome::interface::sequence::{EditableGenomeSequence, OwnedGenomeSequence};
+use error::Wtdbg2IoError;
+use log::{debug, error, info, warn};
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -18,6 +20,7 @@ use std::time::{Duration, Instant};
 
 /// Reading and writing the dot format of wtdbg2.
 pub mod dot;
+pub mod error;
 
 /// Node data as given in a .1.nodes file from wtdbg2.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -351,15 +354,26 @@ pub fn read_graph_from_wtdbg2<
             .get(&split.next().unwrap()[1..].parse().unwrap())
             .unwrap();
         let label = &split.next().unwrap()[8..10];
-        let from_forward = match label.as_bytes()[0] {
-            b'+' => true,
-            b'-' => false,
-            unknown => bail!("Unknown node direction: {}", unknown),
+        #[expect(clippy::iter_nth_zero)]
+        let from_forward = match label.chars().nth(0).unwrap() {
+            '+' => true,
+            '-' => false,
+            unknown => {
+                return Err(Wtdbg2IoError::UnknownNodeDirection {
+                    direction: unknown.to_string(),
+                }
+                .into())
+            }
         };
-        let to_forward = match label.as_bytes()[1] {
-            b'+' => true,
-            b'-' => false,
-            unknown => bail!("Unknown node direction: {}", unknown),
+        let to_forward = match label.chars().nth(1).unwrap() {
+            '+' => true,
+            '-' => false,
+            unknown => {
+                return Err(Wtdbg2IoError::UnknownNodeDirection {
+                    direction: unknown.to_string(),
+                }
+                .into())
+            }
         };
 
         let n1 = if from_forward { n1.1 } else { n1.0 };
@@ -589,7 +603,7 @@ impl RawWtdbg2Contigs {
                 }
             }
 
-            if let Some((ea, eb)) = a.edges.iter().zip(b.edges.iter()).last() {
+            if let Some((ea, eb)) = a.edges.iter().zip(b.edges.iter()).next_back() {
                 if ea.to_node != eb.to_node {
                     return ea.to_node.cmp(&eb.to_node);
                 }
@@ -980,13 +994,23 @@ pub fn read_wtdbg2_contigs<R: Read>(input: R) -> Result<RawWtdbg2Contigs> {
                 let from_direction = match split.next().unwrap() {
                     "+" => true,
                     "-" => false,
-                    unknown => bail!("Unknown direction: '{}'", unknown),
+                    unknown => {
+                        return Err(Wtdbg2IoError::UnknownNodeDirection {
+                            direction: unknown.to_string(),
+                        }
+                        .into())
+                    }
                 };
                 let to_node = split.next().unwrap()[1..].parse().unwrap();
                 let to_direction = match split.next().unwrap() {
                     "+" => true,
                     "-" => false,
-                    unknown => bail!("Unknown direction: '{}'", unknown),
+                    unknown => {
+                        return Err(Wtdbg2IoError::UnknownNodeDirection {
+                            direction: unknown.to_string(),
+                        }
+                        .into())
+                    }
                 };
                 result
                     .contigs
@@ -1009,7 +1033,12 @@ pub fn read_wtdbg2_contigs<R: Read>(input: R) -> Result<RawWtdbg2Contigs> {
                 let direction = match split.next().unwrap() {
                     "+" => true,
                     "-" => false,
-                    unknown => bail!("Unknown direction: '{}'", unknown),
+                    unknown => {
+                        return Err(Wtdbg2IoError::UnknownNodeDirection {
+                            direction: unknown.to_string(),
+                        }
+                        .into())
+                    }
                 };
                 let offset = split.next().unwrap().parse().unwrap();
                 let len = split.next().unwrap().parse().unwrap();
@@ -1031,7 +1060,12 @@ pub fn read_wtdbg2_contigs<R: Read>(input: R) -> Result<RawWtdbg2Contigs> {
                         sequence,
                     });
             }
-            error => bail!("Unknown line start: '{}'", error as char),
+            error => {
+                return Err(Wtdbg2IoError::UnknownLineStart {
+                    line_start: (error as char).to_string(),
+                }
+                .into())
+            }
         }
     }
 
